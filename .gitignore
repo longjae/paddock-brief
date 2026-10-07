@@ -1,0 +1,15 @@
+.DS_Store
+.env
+.env.local
+.venv/
+.uv-cache/
+.vercel/
+supabase/.temp/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+node_modules/
+.next/
+*.tsbuildinfo
+out/
+coverage/

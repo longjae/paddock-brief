@@ -1,0 +1,61 @@
+name: Collect F1 weekend content
+
+on:
+  schedule:
+    # 매일 03:17 UTC(한국 시간 12:17)에 한 번 실행한다.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      event_slug:
+        description: "특정 이벤트 slug (예: 2026-singapore)"
+        required: false
+        type: string
+      dry_run:
+        description: "Supabase에 저장하지 않고 수집/요약만 확인"
+        required: false
+        default: false
+        type: boolean
+      pending:
+        description: "자동 공개하지 않고 pending으로 저장"
+        required: false
+        default: false
+        type: boolean
+      discovery_only:
+        description: "공식 소스 링크 발견까지만 검증"
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: collect-f1-content
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      TRANSCRIPT_API_KEY: ${{ secrets.TRANSCRIPT_API_KEY }}
+      OPENAI_SUMMARY_MODEL: ${{ vars.OPENAI_SUMMARY_MODEL || 'gpt-6-luna' }}
+      APP_USE_SAMPLE_DATA: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Install collector dependencies
+        run: uv sync --frozen --group collector
+      - name: Collect, classify, summarize, and save
+        run: >-
+          uv run python scripts/collect_weekend_content.py
+          ${{ inputs.event_slug && format('--event-slug {0}', inputs.event_slug) || '' }}
+          ${{ inputs.dry_run && '--dry-run' || '' }}
+          ${{ inputs.pending && '--pending' || '' }}
+          ${{ inputs.discovery_only && '--discovery-only' || '' }}

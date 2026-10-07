@@ -1,0 +1,51 @@
+name: Sync Jolpica and FastF1 race data
+
+on:
+  schedule:
+    - cron: "37 * * * *"
+  workflow_dispatch:
+    inputs:
+      event_slug:
+        description: "특정 이벤트 slug"
+        required: false
+        type: string
+      force:
+        description: "기존 스냅샷 다시 생성"
+        required: false
+        default: false
+        type: boolean
+      dry_run:
+        description: "Supabase에 저장하지 않고 검증"
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: sync-race-data
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      APP_USE_SAMPLE_DATA: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Install FastF1 collector
+        run: uv sync --frozen --group collector
+      - name: Sync completed race data
+        run: >-
+          uv run python scripts/sync_race_data.py
+          ${{ inputs.event_slug && format('--event-slug {0}', inputs.event_slug) || '' }}
+          ${{ inputs.force && '--force' || '' }}
+          ${{ inputs.dry_run && '--dry-run' || '' }}
