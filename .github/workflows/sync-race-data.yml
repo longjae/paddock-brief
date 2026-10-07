@@ -2,7 +2,8 @@ name: Sync Jolpica and FastF1 race data
 
 on:
   schedule:
-    - cron: "37 * * * *"
+    # 매일 03:37 UTC(한국 시간 12:37)에 한 번 실행한다.
+    - cron: "37 3 * * *"
   workflow_dispatch:
     inputs:
       event_slug:
