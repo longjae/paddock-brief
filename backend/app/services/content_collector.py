@@ -19,6 +19,7 @@ from supabase import Client
 
 
 F1_BASE_URL = "https://www.formula1.com"
+LATEST_CONTENT_URL = f"{F1_BASE_URL}/en/latest"
 PRESS_ARCHIVE_URL = "https://www.formula1.com/en/latest/tags/press-conferences.55FMj3vhksoIIIQmuKwSuq"
 ARTICLE_PATH_RE = re.compile(r"^/en/latest/(?:article|video)/[^?#]+")
 YOUTUBE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
@@ -288,6 +289,31 @@ def team_document_matches_event(document: SourceDocument, event: dict[str, Any])
     return any(term and len(term) >= 4 and term in haystack for term in terms)
 
 
+def is_driver_interview(title: str, url: str, driver_codes: list[str]) -> bool:
+    if not driver_codes:
+        return False
+    haystack = f"{title} {url}".lower()
+    signals = (
+        "exclusive",
+        "q-and-a",
+        "q&a",
+        "answers-your-questions",
+        "explains",
+        "admits",
+        "promises",
+        "evaluates",
+        "hopeful",
+        "we-ll",
+        "we-re",
+        "i-m",
+        "i-ve",
+        "'",
+        "‘",
+        "’",
+    )
+    return any(signal in haystack for signal in signals)
+
+
 class OpenAISummarizer:
     def __init__(self, api_key: str, model: str, client: httpx.Client | None = None) -> None:
         self.api_key = api_key
@@ -538,7 +564,11 @@ class Formula1ContentCollector:
     ) -> CollectionResult:
         result = CollectionResult(event_slug=event["slug"])
         hub_slug = str(event["slug"]).removeprefix(f"{event['season']}-")
-        discovery_pages = [f"{F1_BASE_URL}/en/racing/{event['season']}/{hub_slug}", PRESS_ARCHIVE_URL]
+        discovery_pages = [
+            f"{F1_BASE_URL}/en/racing/{event['season']}/{hub_slug}",
+            LATEST_CONTENT_URL,
+            PRESS_ARCHIVE_URL,
+        ]
         urls: set[str] = set()
         for page_url in discovery_pages:
             try:
@@ -556,11 +586,15 @@ class Formula1ContentCollector:
                 result.errors.append(f"discover {source.discovery_url}: {exc}")
         result.discovered = len(urls) + len(team_urls)
 
-        existing_rows = (
-            self.database.table("event_news").select("source_url").eq("event_id", event["id"]).execute().data
-        )
+        existing_rows = self.database.table("event_news").select(
+            "id,source_url,title,category,driver_codes"
+        ).eq("event_id", event["id"]).execute().data
         existing_urls = {
             canonicalize_web_url(row["source_url"], row["source_url"])
+            for row in existing_rows
+        }
+        existing_by_url = {
+            canonicalize_web_url(row["source_url"], row["source_url"]): row
             for row in existing_rows
         }
         if discovery_only:
@@ -601,7 +635,15 @@ class Formula1ContentCollector:
         for url in sorted(urls):
             if result.relevant >= max_articles:
                 break
-            if canonicalize_web_url(url, url) in existing_urls and not refresh_existing:
+            normalized_url = canonicalize_web_url(url, url)
+            if normalized_url in existing_urls and not refresh_existing:
+                stored = existing_by_url[normalized_url]
+                if stored.get("category") != "interview" and is_driver_interview(
+                    str(stored.get("title") or ""), url, list(stored.get("driver_codes") or [])
+                ):
+                    if not dry_run:
+                        self.database.table("event_news").update({"category": "interview"}).eq("id", stored["id"]).execute()
+                    result.updated += 1
                 result.skipped += 1
                 continue
             try:
@@ -611,6 +653,8 @@ class Formula1ContentCollector:
                     continue
                 result.relevant += 1
                 summary = self.summarizer.summarize(document, teams, drivers)
+                if is_driver_interview(document.title, document.url, summary.driver_codes):
+                    summary.category = "interview"
                 row = {
                     "event_id": event["id"],
                     "source_id": source_id,

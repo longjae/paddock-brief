@@ -200,7 +200,7 @@ h1 { font-size: clamp(46px, 6vw, 84px); letter-spacing: -.065em; line-height: .9
 .team-card-header > div { min-width: 0; display: flex; align-items: center; gap: 9px; }
 .team-card-header span { overflow: hidden; color: var(--team-colour); font: 700 9px var(--font-mono); text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
 .team-card-header em { flex: 0 0 auto; color: var(--muted); font: 8px var(--font-mono); font-style: normal; }
-.team-logo { display: block; width: 42px; height: 26px; object-fit: contain; object-position: center; }
+.team-logo { display: block; width: 42px; height: 26px; object-fit: contain; object-position: center; filter: grayscale(1) brightness(0) invert(1); }
 .team-logo-fallback { display: grid; width: 42px; height: 26px; place-items: center; color: #fff; background: color-mix(in srgb, var(--team-colour, var(--standing-colour, #777)) 28%, #171717); border: 1px solid currentColor; border-radius: 5px; font: 800 8px var(--font-mono); }
 .team-card-header .team-logo, .team-card-header .team-logo-fallback { flex: 0 0 42px; }
 .team-content-card h4 { margin: 12px 0 8px; font-size: 15px; }

@@ -12,6 +12,7 @@ from app.services.content_collector import (
     discover_team_article_urls,
     document_matches_event,
     event_is_active,
+    is_driver_interview,
     parse_article,
     parse_team_article,
     parse_youtube_subtitle,
@@ -189,3 +190,21 @@ def test_team_article_does_not_match_only_because_body_mentions_next_race() -> N
     }
     assert document_matches_event(document, singapore)
     assert not team_document_matches_event(document, singapore)
+
+
+def test_driver_quotes_and_q_and_a_are_classified_as_interviews() -> None:
+    assert is_driver_interview(
+        "Norris hopeful car issue will be cured",
+        "https://www.formula1.com/en/latest/article/norris-hopeful-in-singapore.abc",
+        ["NOR"],
+    )
+    assert is_driver_interview(
+        "Max Verstappen answers your questions",
+        "https://www.formula1.com/en/latest/article/exclusive-reader-q-and-a.abc",
+        ["VER"],
+    )
+    assert not is_driver_interview(
+        "Singapore Grand Prix timetable",
+        "https://www.formula1.com/en/latest/article/singapore-timetable.abc",
+        [],
+    )

@@ -85,9 +85,13 @@ def main() -> int:
                     "dry_run": args.dry_run,
                 }
             ).execute()
-    payload = {"ok": not any(result.failed for result in results), "results": [asdict(result) for result in results]}
+    total_failure = bool(results) and all(
+        result.failed > 0 and result.inserted == 0 and result.updated == 0
+        for result in results
+    )
+    payload = {"ok": not total_failure, "results": [asdict(result) for result in results]}
     print(json.dumps(payload, ensure_ascii=False, default=str))
-    return 1 if any(result.failed for result in results) else 0
+    return 1 if total_failure else 0
 
 
 if __name__ == "__main__":
