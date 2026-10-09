@@ -3,20 +3,25 @@ from datetime import datetime, timezone
 import httpx
 
 from app.services.content_collector import (
+    MEDIA_FEED_SOURCES,
     KoreanArticleSummary,
     Formula1ContentCollector,
     TEAM_EDITORIAL_SOURCES,
     canonicalize_url,
     canonicalize_web_url,
     discover_article_urls,
+    discover_feed_article_urls,
+    discover_fia_transcript_urls,
     discover_team_article_urls,
     document_matches_event,
     event_is_active,
     is_driver_interview,
     parse_article,
+    parse_external_article,
     parse_team_article,
     parse_youtube_subtitle,
     team_document_matches_event,
+    url_may_match_event,
 )
 
 
@@ -95,6 +100,50 @@ def test_discovers_only_formula1_articles_and_videos() -> None:
         "https://www.formula1.com/en/latest/article/race-report.abc",
         "https://www.formula1.com/en/latest/video/interview.xyz",
     }
+
+
+def test_discovers_only_fia_press_conference_transcripts() -> None:
+    page = '''
+    <a href="/news/f1-2026-singapore-grand-prix-thursday-press-conference-transcript">Transcript</a>
+    <a href="/news/f1-2026-singapore-grand-prix-preview">Preview</a>
+    <a href="https://example.com/news/f1-2026-singapore-grand-prix-friday-press-conference-transcript">External</a>
+    '''
+    assert discover_fia_transcript_urls(page) == {
+        "https://fia.com/news/f1-2026-singapore-grand-prix-thursday-press-conference-transcript"
+    }
+
+
+def test_discovers_articles_from_media_rss_feed() -> None:
+    source = MEDIA_FEED_SOURCES[0]
+    feed = '''<?xml version="1.0"?>
+    <rss><channel>
+      <item><link>https://www.bbc.com/sport/formula1/articles/singapore-interview?at_medium=RSS</link></item>
+      <item><link>https://example.com/not-bbc</link></item>
+    </channel></rss>'''
+    assert discover_feed_article_urls(feed, source) == {
+        "https://bbc.com/sport/formula1/articles/singapore-interview"
+    }
+    event = {"country": "Singapore", "locality": "Singapore", "circuit_name": "Marina Bay Street Circuit", "short_name": "Singapore Grand Prix"}
+    assert url_may_match_event("https://bbc.com/sport/formula1/articles/singapore-interview", event)
+    assert not url_may_match_event("https://bbc.com/sport/formula1/articles/australian-interview", event)
+
+
+def test_parses_fia_transcript_as_external_article() -> None:
+    page = '''
+    <meta property="og:title" content="F1 - 2026 Singapore Grand Prix - Thursday Press Conference Transcript" />
+    <meta property="article:published_time" content="2026-10-08T12:00:00Z" />
+    <main><p>PART ONE – Fernando Alonso, Esteban Ocon and Franco Colapinto.</p>
+    <p>Q: Fernando, how important was the result in Malaysia?</p></main>
+    '''
+    article = parse_external_article(
+        "https://www.fia.com/news/f1-2026-singapore-grand-prix-thursday-press-conference-transcript?ref=x",
+        page,
+        "FIA",
+        "https://www.fia.com",
+    )
+    assert article.author == "FIA"
+    assert article.url.endswith("press-conference-transcript")
+    assert "Fernando Alonso" in article.body
 
 
 def test_discovers_only_mclaren_formula1_articles() -> None:

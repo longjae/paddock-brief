@@ -11,6 +11,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Iterable, Literal
 from urllib.parse import urljoin, urlparse, urlunparse
+from xml.etree import ElementTree
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -19,9 +20,12 @@ from supabase import Client
 
 
 F1_BASE_URL = "https://www.formula1.com"
+FIA_BASE_URL = "https://www.fia.com"
+FIA_F1_NEWS_URL = f"{FIA_BASE_URL}/news/formula-1"
 LATEST_CONTENT_URL = f"{F1_BASE_URL}/en/latest"
 PRESS_ARCHIVE_URL = "https://www.formula1.com/en/latest/tags/press-conferences.55FMj3vhksoIIIQmuKwSuq"
 ARTICLE_PATH_RE = re.compile(r"^/en/latest/(?:article|video)/[^?#]+")
+FIA_TRANSCRIPT_PATH_RE = re.compile(r"^/news/f1-\d{4}-.+-press-conference-transcript$")
 YOUTUBE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
 
 
@@ -33,6 +37,21 @@ class TeamEditorialSource:
     base_url: str
     discovery_url: str
     article_path_re: re.Pattern[str]
+
+
+@dataclass(frozen=True, slots=True)
+class MediaFeedSource:
+    code: str
+    name: str
+    base_url: str
+    feed_url: str
+
+
+MEDIA_FEED_SOURCES = (
+    MediaFeedSource("bbc-sport-f1", "BBC Sport F1", "https://www.bbc.com/sport/formula1", "https://feeds.bbci.co.uk/sport/formula1/rss.xml"),
+    MediaFeedSource("racefans", "RaceFans", "https://www.racefans.net/", "https://www.racefans.net/feed/"),
+    MediaFeedSource("sky-sports-f1", "Sky Sports F1", "https://www.skysports.com/f1", "https://www.skysports.com/rss/12040"),
+)
 
 
 TEAM_EDITORIAL_SOURCES = (
@@ -194,6 +213,57 @@ def discover_team_article_urls(page_html: str, source: TeamEditorialSource) -> s
     return urls
 
 
+def discover_fia_transcript_urls(page_html: str) -> set[str]:
+    parser = _LinkParser()
+    parser.feed(page_html)
+    urls: set[str] = set()
+    for link in parser.links:
+        absolute = urljoin(FIA_BASE_URL, link)
+        parsed = urlparse(absolute)
+        if (parsed.hostname or "").removeprefix("www.") != "fia.com":
+            continue
+        if FIA_TRANSCRIPT_PATH_RE.match(parsed.path):
+            urls.add(canonicalize_web_url(absolute, FIA_BASE_URL))
+    return urls
+
+
+def discover_feed_article_urls(feed_xml: str, source: MediaFeedSource, limit: int = 12) -> set[str]:
+    root = ElementTree.fromstring(feed_xml)
+    source_host = (urlparse(source.base_url).hostname or "").removeprefix("www.")
+    urls: set[str] = set()
+    for element in root.iter():
+        if element.tag.rsplit("}", 1)[-1] not in {"link", "guid"}:
+            continue
+        candidate = (element.text or element.attrib.get("href") or "").strip()
+        if not candidate.startswith(("http://", "https://")):
+            continue
+        host = (urlparse(candidate).hostname or "").removeprefix("www.")
+        if host == source_host or host.endswith(f".{source_host}"):
+            urls.add(canonicalize_web_url(candidate, source.base_url))
+            if len(urls) >= limit:
+                break
+    return urls
+
+
+def url_may_match_event(url: str, event: dict[str, Any]) -> bool:
+    haystack = url.lower()
+    terms = {
+        str(event.get("country", "")).lower(),
+        str(event.get("locality", "")).lower(),
+        str(event.get("circuit_name", "")).lower(),
+        str(event.get("short_name", "")).lower().replace(" grand prix", ""),
+    }
+    if "malaysia" in terms or "sepang" in terms:
+        terms.update({"malaysia", "sepang", "kuala-lumpur"})
+    candidates = {
+        token
+        for term in terms
+        for token in re.split(r"[^a-z0-9]+", term)
+        if len(token) >= 4 and token not in {"grand", "prix", "street", "circuit"}
+    }
+    return any(token in haystack for token in candidates)
+
+
 def parse_article(url: str, page_html: str) -> SourceDocument:
     parser = _ArticleParser()
     parser.feed(page_html)
@@ -223,6 +293,27 @@ def parse_team_article(url: str, page_html: str, source: TeamEditorialSource) ->
         title=html.unescape(title),
         description=html.unescape(description),
         author=metadata.get("author") or source.name,
+        published_at=(
+            metadata.get("article:published_time")
+            or metadata.get("datepublished")
+            or metadata.get("date")
+        ),
+        paragraphs=paragraphs,
+    )
+
+
+def parse_external_article(url: str, page_html: str, source_name: str, base_url: str) -> SourceDocument:
+    parser = _ArticleParser()
+    parser.feed(page_html)
+    metadata = parser.metadata
+    title = metadata.get("og:title") or metadata.get("twitter:title") or f"{source_name} article"
+    description = metadata.get("og:description") or metadata.get("description") or ""
+    paragraphs = [paragraph for paragraph in parser.paragraphs if paragraph not in {title, description}]
+    return SourceDocument(
+        url=canonicalize_web_url(url, base_url),
+        title=html.unescape(title),
+        description=html.unescape(description),
+        author=metadata.get("author") or source_name,
         published_at=(
             metadata.get("article:published_time")
             or metadata.get("datepublished")
@@ -419,6 +510,24 @@ class Formula1ContentCollector:
         response.raise_for_status()
         return response.text
 
+    def ensure_source(self, code: str, name: str, base_url: str, source_kind: str, *, is_official: bool) -> str:
+        rows = self.database.table("sources").select("id").eq("code", code).limit(1).execute().data
+        if rows:
+            return str(rows[0]["id"])
+        created = self.database.table("sources").upsert(
+            {
+                "code": code,
+                "name": name,
+                "base_url": base_url,
+                "source_kind": source_kind,
+                "is_official": is_official,
+            },
+            on_conflict="code",
+        ).execute().data
+        if not created:
+            raise RuntimeError(f"source {code} could not be created")
+        return str(created[0]["id"])
+
     @staticmethod
     def fetch_youtube_transcript(video_id: str) -> tuple[str, str]:
         from youtube_transcript_api import YouTubeTranscriptApi
@@ -584,7 +693,22 @@ class Formula1ContentCollector:
             except Exception as exc:
                 result.failed += 1
                 result.errors.append(f"discover {source.discovery_url}: {exc}")
-        result.discovered = len(urls) + len(team_urls)
+        fia_urls: set[str] = set()
+        try:
+            fia_urls.update(discover_fia_transcript_urls(self.fetch(FIA_F1_NEWS_URL)))
+        except Exception as exc:
+            result.failed += 1
+            result.errors.append(f"discover {FIA_F1_NEWS_URL}: {exc}")
+        media_urls: dict[str, MediaFeedSource] = {}
+        for source in MEDIA_FEED_SOURCES:
+            try:
+                for url in discover_feed_article_urls(self.fetch(source.feed_url), source):
+                    if url_may_match_event(url, event):
+                        media_urls[url] = source
+            except Exception as exc:
+                result.failed += 1
+                result.errors.append(f"discover {source.feed_url}: {exc}")
+        result.discovered = len(urls) + len(team_urls) + len(fia_urls) + len(media_urls)
 
         existing_rows = self.database.table("event_news").select(
             "id,source_url,title,category,driver_codes"
@@ -598,6 +722,16 @@ class Formula1ContentCollector:
             for row in existing_rows
         }
         if discovery_only:
+            for url in sorted(fia_urls):
+                try:
+                    document = parse_external_article(url, self.fetch(url), "FIA", FIA_BASE_URL)
+                    if document_matches_event(document, event):
+                        result.relevant += 1
+                    else:
+                        result.skipped += 1
+                except Exception as exc:
+                    result.failed += 1
+                    result.errors.append(f"article {url}: {exc}")
             for url in sorted(urls):
                 if result.relevant >= max_articles:
                     break
@@ -624,6 +758,20 @@ class Formula1ContentCollector:
                 except Exception as exc:
                     result.failed += 1
                     result.errors.append(f"article {url}: {exc}")
+            media_relevant = 0
+            for url, source in sorted(media_urls.items()):
+                if media_relevant >= max_articles:
+                    break
+                try:
+                    document = parse_external_article(url, self.fetch(url), source.name, source.base_url)
+                    if document_matches_event(document, event):
+                        result.relevant += 1
+                        media_relevant += 1
+                    else:
+                        result.skipped += 1
+                except Exception as exc:
+                    result.failed += 1
+                    result.errors.append(f"article {url}: {exc}")
             return result
         source_rows = self.database.table("sources").select("id").eq("code", "formula1-editorial").limit(1).execute().data
         if not source_rows:
@@ -631,6 +779,53 @@ class Formula1ContentCollector:
         source_id = source_rows[0]["id"]
         teams = self.database.table("teams").select("id,code,name").execute().data
         drivers = self.database.table("drivers").select("code,full_name").execute().data
+
+        if fia_urls:
+            fia_source_id = self.ensure_source(
+                "fia-press-conference",
+                "FIA",
+                FIA_BASE_URL,
+                "governing-body",
+                is_official=True,
+            )
+            for url in sorted(fia_urls):
+                normalized_url = canonicalize_web_url(url, url)
+                if normalized_url in existing_urls and not refresh_existing:
+                    result.skipped += 1
+                    continue
+                try:
+                    document = parse_external_article(url, self.fetch(url), "FIA", FIA_BASE_URL)
+                    if not document_matches_event(document, event):
+                        result.skipped += 1
+                        continue
+                    result.relevant += 1
+                    summary = self.summarizer.summarize(document, teams, drivers)
+                    summary.category = "interview"
+                    if "공식 기자회견" not in summary.tags:
+                        summary.tags.insert(0, "공식 기자회견")
+                    row = {
+                        "event_id": event["id"],
+                        "source_id": fia_source_id,
+                        "category": "interview",
+                        "title": summary.title_ko,
+                        "source_url": document.url,
+                        "korean_summary": summary.summary_ko,
+                        "korean_detail": summary.detail,
+                        "author": "FIA",
+                        "tags": summary.tags,
+                        "team_codes": summary.team_codes,
+                        "driver_codes": summary.driver_codes,
+                        "published_at": document.published_at,
+                        "review_status": review_status,
+                    }
+                    if dry_run:
+                        result.inserted += 1
+                        continue
+                    self.database.table("event_news").upsert(row, on_conflict="event_id,source_url").execute()
+                    result.inserted += 1
+                except Exception as exc:
+                    result.failed += 1
+                    result.errors.append(f"article {url}: {exc}")
 
         for url in sorted(urls):
             if result.relevant >= max_articles:
@@ -789,6 +984,52 @@ class Formula1ContentCollector:
                     },
                     on_conflict="event_id,team_id,source_url",
                 ).execute()
+                result.inserted += 1
+            except Exception as exc:
+                result.failed += 1
+                result.errors.append(f"article {url}: {exc}")
+
+        media_relevant = 0
+        for url, source in sorted(media_urls.items()):
+            if media_relevant >= max_articles:
+                break
+            if canonicalize_web_url(url, url) in existing_urls and not refresh_existing:
+                result.skipped += 1
+                continue
+            try:
+                document = parse_external_article(url, self.fetch(url), source.name, source.base_url)
+                if not document_matches_event(document, event):
+                    result.skipped += 1
+                    continue
+                result.relevant += 1
+                media_relevant += 1
+                summary = self.summarizer.summarize(document, teams, drivers)
+                source_id = self.ensure_source(
+                    source.code,
+                    source.name,
+                    source.base_url,
+                    "media",
+                    is_official=False,
+                )
+                row = {
+                    "event_id": event["id"],
+                    "source_id": source_id,
+                    "category": summary.category,
+                    "title": summary.title_ko,
+                    "source_url": document.url,
+                    "korean_summary": summary.summary_ko,
+                    "korean_detail": summary.detail,
+                    "author": document.author,
+                    "tags": summary.tags,
+                    "team_codes": summary.team_codes,
+                    "driver_codes": summary.driver_codes,
+                    "published_at": document.published_at,
+                    "review_status": review_status,
+                }
+                if dry_run:
+                    result.inserted += 1
+                    continue
+                self.database.table("event_news").upsert(row, on_conflict="event_id,source_url").execute()
                 result.inserted += 1
             except Exception as exc:
                 result.failed += 1
