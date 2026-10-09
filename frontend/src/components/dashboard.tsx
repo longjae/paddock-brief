@@ -51,8 +51,15 @@ function standingTeamColour(teamCode: string, teamName: string): string {
 }
 
 function sessionDay(session: EventDetail["sessions"][number]): WeekendDay {
-  if (["FP1", "FP2"].includes(session.shortName)) return "금요일";
-  if (["FP3", "Q", "SQ", "S"].includes(session.shortName)) return "토요일";
+  const match = session.startsAt.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) {
+    const weekday = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))).getUTCDay();
+    if (weekday === 5) return "금요일";
+    if (weekday === 6) return "토요일";
+    if (weekday === 0) return "일요일";
+  }
+  if (["FP1", "FP2", "SQ"].includes(session.shortName)) return "금요일";
+  if (["FP3", "Q", "S"].includes(session.shortName)) return "토요일";
   return "일요일";
 }
 
