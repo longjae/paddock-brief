@@ -175,7 +175,7 @@ h1 { font-size: clamp(46px, 6vw, 84px); letter-spacing: -.065em; line-height: .9
 .paddock-team-switcher { flex: 0 0 196px; scroll-snap-align: start; overflow: hidden; background: #101010; border: 1px solid var(--line); border-radius: 11px; transition: border-color .15s ease, transform .15s ease; }
 .paddock-team-switcher.active { border-color: var(--team-colour); box-shadow: inset 0 3px var(--team-colour); }
 .paddock-team-switcher:hover { transform: translateY(-1px); }
-.paddock-team-switcher > button { width: 100%; display: grid; grid-template-columns: 8px 1fr auto; gap: 8px; align-items: center; padding: 14px 12px 11px; color: var(--ink); background: transparent; border: 0; text-align: left; cursor: pointer; }
+.paddock-team-switcher > button { width: 100%; display: grid; grid-template-columns: 8px 42px minmax(0,1fr) auto; gap: 8px; align-items: center; padding: 12px; color: var(--ink); background: transparent; border: 0; text-align: left; cursor: pointer; }
 .paddock-team-switcher > button i { width: 4px; height: 27px; background: var(--team-colour); border-radius: 4px; }
 .paddock-team-switcher > button span { min-width: 0; overflow: hidden; font-size: 12px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
 .paddock-team-switcher > button small { color: var(--muted); font: 7px var(--font-mono); }
@@ -196,9 +196,13 @@ h1 { font-size: clamp(46px, 6vw, 84px); letter-spacing: -.065em; line-height: .9
 .team-content-card { position: relative; width: 100%; display: flex; flex-direction: column; min-height: 190px; padding: 16px; color: var(--ink); background: rgba(255,255,255,.025); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; font: inherit; text-align: left; cursor: pointer; }
 .team-content-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--team-colour); }
 .team-content-card:hover { border-color: var(--team-colour); transform: translateY(-1px); }
-.team-content-card > div { display: flex; justify-content: space-between; gap: 10px; }
-.team-content-card > div span { color: var(--team-colour); font: 700 9px var(--font-mono); text-transform: uppercase; }
-.team-content-card > div em { color: var(--muted); font: 8px var(--font-mono); font-style: normal; }
+.team-card-header { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+.team-card-header > div { min-width: 0; display: flex; align-items: center; gap: 9px; }
+.team-card-header span { overflow: hidden; color: var(--team-colour); font: 700 9px var(--font-mono); text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.team-card-header em { flex: 0 0 auto; color: var(--muted); font: 8px var(--font-mono); font-style: normal; }
+.team-logo { display: block; width: 42px; height: 26px; object-fit: contain; object-position: center; }
+.team-logo-fallback { display: grid; width: 42px; height: 26px; place-items: center; color: #fff; background: color-mix(in srgb, var(--team-colour, var(--standing-colour, #777)) 28%, #171717); border: 1px solid currentColor; border-radius: 5px; font: 800 8px var(--font-mono); }
+.team-card-header .team-logo, .team-card-header .team-logo-fallback { flex: 0 0 42px; }
 .team-content-card h4 { margin: 12px 0 8px; font-size: 15px; }
 .team-content-card > p { margin: 0; color: #afb2ac; font-size: 11px; line-height: 1.65; }
 .team-content-card footer { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; margin-top: auto; padding: 14px 0 0; }
@@ -285,6 +289,8 @@ footer { display: flex; justify-content: space-between; padding: 20px 2px 34px; 
 .standings-panel > header > span { color: var(--muted); font: 8px var(--font-mono); }
 .standings-list { padding: 6px 14px 14px; }
 .standing-row { position: relative; display: grid; grid-template-columns: 30px minmax(0,1fr) 54px 68px; gap: 10px; align-items: center; min-height: 58px; padding-left: 7px; border-bottom: 1px solid var(--line); }
+.constructor-standing { grid-template-columns: 30px 48px minmax(0,1fr) 54px 68px; }
+.constructor-standing > .team-logo, .constructor-standing > .team-logo-fallback { width: 46px; height: 30px; }
 .standing-row::before { content: ""; position: absolute; left: 0; width: 3px; height: 28px; background: var(--standing-colour); border-radius: 0 4px 4px 0; box-shadow: 0 0 12px color-mix(in srgb, var(--standing-colour) 38%, transparent); }
 .standing-row:hover { background: linear-gradient(90deg, color-mix(in srgb, var(--standing-colour) 9%, transparent), transparent 48%); }
 .standing-row:last-child { border-bottom: 0; }

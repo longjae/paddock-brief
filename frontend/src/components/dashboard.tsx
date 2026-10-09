@@ -42,12 +42,44 @@ const TEAM_COLOURS: Record<string, string> = {
   cadillac: "#d4af37",
 };
 
+const TEAM_LOGO_SLUGS: Record<string, string> = {
+  mercedes: "mercedes",
+  ferrari: "ferrari",
+  mclaren: "mclaren",
+  redbull: "redbullracing",
+  redbullracing: "redbullracing",
+  racingbulls: "racingbulls",
+  alpine: "alpine",
+  haas: "haasf1team",
+  haasf1team: "haasf1team",
+  audi: "audi",
+  williams: "williams",
+  astonmartin: "astonmartin",
+  cadillac: "cadillac",
+};
+
 function normalizedIdentity(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "").replace(/^rb$/, "racingbulls");
 }
 
 function standingTeamColour(teamCode: string, teamName: string): string {
   return TEAM_COLOURS[normalizedIdentity(teamCode)] ?? TEAM_COLOURS[normalizedIdentity(teamName)] ?? "#8a8f88";
+}
+
+function TeamLogo({ teamCode, teamName, className = "" }: { teamCode: string; teamName: string; className?: string }) {
+  const identity = normalizedIdentity(teamCode);
+  const slug = TEAM_LOGO_SLUGS[identity] ?? TEAM_LOGO_SLUGS[normalizedIdentity(teamName)];
+  if (!slug) return <span aria-hidden="true" className={`team-logo-fallback ${className}`}>{teamName.slice(0, 2).toUpperCase()}</span>;
+  return (
+    <img
+      alt=""
+      className={`team-logo ${className}`}
+      height="48"
+      loading="lazy"
+      src={`https://media.formula1.com/image/upload/e_trim/c_fit,w_96,h_48/q_auto/v1740000001/common/f1/2026/${slug}/2026${slug}logowhite.webp`}
+      width="96"
+    />
+  );
 }
 
 function sessionDay(session: EventDetail["sessions"][number]): WeekendDay {
@@ -537,7 +569,7 @@ export function Dashboard() {
                 {teams.map((team) => (
                   <div className={`paddock-team-switcher ${activeTeam === team.code ? "active" : ""}`} key={team.code} style={{ "--team-colour": team.colour } as React.CSSProperties}>
                     <button className={activeTeam === team.code && paddockView === "team" ? "selected" : ""} onClick={() => { setActiveTeam(team.code); setActiveDriver(null); setPaddockView("team"); setInterviewSection("teams"); }} type="button">
-                      <i /><span>{team.name}</span><small>TEAM</small>
+                      <i /><TeamLogo teamCode={team.code} teamName={team.name} /><span>{team.name}</span><small>TEAM</small>
                     </button>
                     <div>
                       {team.drivers.map((driver) => (
@@ -558,7 +590,7 @@ export function Dashboard() {
                       <div className="team-content-grid">
                         {items.map((item) => (
                           <button className="team-content-card" key={item.id} onClick={() => setSelectedContent(teamModalContent(item))} style={{ "--team-colour": item.colour } as React.CSSProperties} type="button">
-                            <div><span>TEAM NEWS · {item.team}</span><em>{categoryLabel(item.contentType)}</em></div>
+                            <div className="team-card-header"><div><TeamLogo teamCode={item.teamCode} teamName={item.team} /><span>TEAM NEWS · {item.team}</span></div><em>{categoryLabel(item.contentType)}</em></div>
                             <h4>{item.title}</h4><p>{item.summary}</p>
                             <footer><small>{item.source}</small><small>{item.participants.slice(0, 3).join(" · ")}</small><b>상세 요약 보기 ↗</b></footer>
                           </button>
@@ -633,7 +665,7 @@ export function Dashboard() {
             <section className="panel standings-panel">
               <header><div><p className="eyebrow">CONSTRUCTORS</p><h3>컨스트럭터 챔피언십</h3></div><span>{championship.constructors.length} TEAMS</span></header>
               <div className="standings-list">
-                {championship.constructors.map((standing) => <div className="standing-row constructor-standing" key={standing.teamCode} style={{ "--standing-colour": standingTeamColour(standing.teamCode, standing.team) } as React.CSSProperties}><b>{standing.position}</b><div><strong>{standing.team}</strong><small>{standing.nationality}</small></div><span>{standing.wins}<small>WINS</small></span><em>{standing.points}<small>PTS</small></em></div>)}
+                {championship.constructors.map((standing) => <div className="standing-row constructor-standing" key={standing.teamCode} style={{ "--standing-colour": standingTeamColour(standing.teamCode, standing.team) } as React.CSSProperties}><b>{standing.position}</b><TeamLogo teamCode={standing.teamCode} teamName={standing.team} /><div><strong>{standing.team}</strong><small>{standing.nationality}</small></div><span>{standing.wins}<small>WINS</small></span><em>{standing.points}<small>PTS</small></em></div>)}
               </div>
             </section>
             <section className="panel standings-panel">
