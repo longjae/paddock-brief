@@ -202,12 +202,12 @@ def test_parses_metadata_and_article_paragraphs() -> None:
     assert "navigation" not in article.body
 
 
-def test_event_window_opens_on_thursday_and_closes_monday() -> None:
+def test_event_window_opens_on_thursday_and_closes_sunday() -> None:
     event = {"start_at": "2026-10-09T08:30:00Z", "end_at": "2026-10-11T14:00:00Z", "timezone": "Asia/Singapore"}
     assert event_is_active(event, datetime(2026, 10, 7, 16, tzinfo=timezone.utc))  # Thursday 00:00 local
-    assert event_is_active(event, datetime(2026, 10, 12, 15, 59, tzinfo=timezone.utc))
+    assert event_is_active(event, datetime(2026, 10, 11, 15, 59, tzinfo=timezone.utc))
     assert not event_is_active(event, datetime(2026, 10, 7, 15, 59, tzinfo=timezone.utc))
-    assert not event_is_active(event, datetime(2026, 10, 12, 16, 1, tzinfo=timezone.utc))
+    assert not event_is_active(event, datetime(2026, 10, 11, 16, 1, tzinfo=timezone.utc))
 
 
 def test_matches_sepang_aliases() -> None:

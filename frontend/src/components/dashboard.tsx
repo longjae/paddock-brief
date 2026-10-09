@@ -1,6 +1,8 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { demoEvent } from "@/lib/mock-data";
 import { F1_GLOSSARY, GLOSSARY_CATEGORIES } from "@/lib/glossary";
@@ -22,11 +24,17 @@ type ModalContent = {
   detailLabel: string;
 };
 
-type MainSection = "weekend" | "interviews" | "championship" | "race-centre" | "glossary";
-type InterviewSection = "press" | "teams" | "drivers" | "videos" | "media";
+export type MainSection = "weekend" | "interviews" | "championship" | "race-centre" | "glossary";
+export type InterviewSection = "press" | "teams" | "drivers" | "videos" | "media";
 type WeekendDay = "금요일" | "토요일" | "일요일";
 
 const WEEKEND_DAYS: WeekendDay[] = ["금요일", "토요일", "일요일"];
+
+function pageHref(section: MainSection, eventSlug?: string, interviewView: InterviewSection = "press"): string {
+  const prefix = eventSlug ? `/races/${eventSlug}` : "";
+  if (section === "interviews") return `${prefix}/interviews/${interviewView}`;
+  return `${prefix}/${section}`;
+}
 
 const TEAM_COLOURS: Record<string, string> = {
   mclaren: "#ff8000",
@@ -218,12 +226,20 @@ function ContentDetailModal({ item, onClose }: { item: ModalContent; onClose: ()
   );
 }
 
-export function Dashboard() {
+export function Dashboard({
+  initialSection = "weekend",
+  initialEventSlug,
+  initialInterviewSection = "press",
+}: {
+  initialSection?: MainSection;
+  initialEventSlug?: string;
+  initialInterviewSection?: InterviewSection;
+}) {
+  const router = useRouter();
   const [event, setEvent] = useState<EventDetail>(demoEvent);
   const [events, setEvents] = useState<EventSummary[]>([]);
   const [source, setSource] = useState<"sample" | "api">("sample");
   const [activeVideo, setActiveVideo] = useState(event.videos[0]?.id);
-  const [isLoading, setIsLoading] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [activeTeam, setActiveTeam] = useState<string | null>(null);
   const [paddockView, setPaddockView] = useState<"team" | "driver">("team");
@@ -231,8 +247,8 @@ export function Dashboard() {
   const [activeDriver, setActiveDriver] = useState<string | null>(null);
   const [selectedContent, setSelectedContent] = useState<ModalContent | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
-  const [activeSection, setActiveSection] = useState<MainSection>("weekend");
-  const [interviewSection, setInterviewSection] = useState<InterviewSection>("press");
+  const activeSection = initialSection;
+  const [interviewSection, setInterviewSection] = useState<InterviewSection>(initialInterviewSection);
   const [raceDay, setRaceDay] = useState<WeekendDay>("일요일");
   const [championship, setChampionship] = useState<ChampionshipSnapshot | null>(null);
   const [championshipLoading, setChampionshipLoading] = useState(true);
@@ -244,6 +260,10 @@ export function Dashboard() {
     const clock = window.setInterval(() => setCurrentTime(Date.now()), 60_000);
     return () => window.clearInterval(clock);
   }, []);
+
+  useEffect(() => {
+    setInterviewSection(initialInterviewSection);
+  }, [initialInterviewSection]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -265,7 +285,7 @@ export function Dashboard() {
     const controller = new AbortController();
     let active = true;
     Promise.all([
-      fetch(`${API_BASE}/events/featured`, { signal: controller.signal }),
+      fetch(`${API_BASE}/events/${initialEventSlug ?? "featured"}`, { signal: controller.signal }),
       fetch(`${API_BASE}/events`, { signal: controller.signal }),
     ])
       .then(async ([featuredResponse, eventsResponse]) => {
@@ -290,32 +310,7 @@ export function Dashboard() {
       active = false;
       controller.abort();
     };
-  }, []);
-
-  const selectEvent = async (slug: string) => {
-    setIsLoading(true);
-    try {
-      const response = await fetch(`${API_BASE}/events/${slug}`);
-      if (!response.ok) throw new Error("Event unavailable");
-      const payload = await response.json() as EventDetail;
-      setChampionship(null);
-      setEvent(payload);
-      setActiveVideo(payload.videos[0]?.id);
-      setActiveTeam(payload.eventDrivers[0]?.teamCode ?? payload.teamContent[0]?.teamCode ?? null);
-      setActiveOutlet("all");
-      setActiveDriver(null);
-      setPaddockView("team");
-      setActiveSection("weekend");
-      setInterviewSection("press");
-      setRaceDay("일요일");
-      setSelectedContent(null);
-      setSource("api");
-    } catch {
-      setSource("sample");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  }, [initialEventSlug]);
 
   const selectedVideo = event.videos.find((video) => video.id === activeVideo) ?? event.videos[0];
   const raceComplete = event.drivers.length > 0 && event.sessions.some((session) => session.shortName === "R" && session.status === "done");
@@ -392,18 +387,18 @@ export function Dashboard() {
   return (
     <main>
       <header className="topbar">
-        <a className="brand" href="#top" aria-label="Paddock Brief 홈">
+        <Link className="brand" href={pageHref("weekend", event.slug)} aria-label="Paddock Brief 홈">
           <span className="brand-mark">PB</span>
           <span>Paddock Brief</span>
-        </a>
+        </Link>
         <nav aria-label="주요 메뉴">
-          <button className={activeSection === "weekend" ? "active" : ""} onClick={() => setActiveSection("weekend")} type="button">Weekend</button>
-          <button className={activeSection === "interviews" ? "active" : ""} onClick={() => setActiveSection("interviews")} type="button">Interviews</button>
-          <button className={activeSection === "championship" ? "active" : ""} onClick={() => setActiveSection("championship")} type="button">Championship</button>
-          <button className={activeSection === "race-centre" ? "active" : ""} onClick={() => setActiveSection("race-centre")} type="button">Race centre</button>
-          <button className={activeSection === "glossary" ? "active" : ""} onClick={() => setActiveSection("glossary")} type="button">F1 용어집</button>
+          <Link className={activeSection === "weekend" ? "active" : ""} href={pageHref("weekend", event.slug)}>Weekend</Link>
+          <Link className={activeSection === "interviews" ? "active" : ""} href={pageHref("interviews", event.slug, interviewSection)}>Interviews</Link>
+          <Link className={activeSection === "championship" ? "active" : ""} href={pageHref("championship", event.slug)}>Championship</Link>
+          <Link className={activeSection === "race-centre" ? "active" : ""} href={pageHref("race-centre", event.slug)}>Race centre</Link>
+          <Link className={activeSection === "glossary" ? "active" : ""} href={pageHref("glossary", event.slug)}>F1 용어집</Link>
         </nav>
-        <select className="event-select" aria-label="그랑프리 선택" value={event.slug} disabled={isLoading} onChange={(change) => void selectEvent(change.target.value)}>
+        <select className="event-select" aria-label="그랑프리 선택" value={event.slug} onChange={(change) => router.push(pageHref(activeSection, change.target.value, interviewSection))}>
           {events.length === 0 && <option value={event.slug}>{event.name}</option>}
           {events.map((calendarEvent) => <option key={calendarEvent.slug} value={calendarEvent.slug}>R{calendarEvent.round} · {calendarEvent.name}</option>)}
         </select>
@@ -420,22 +415,20 @@ export function Dashboard() {
           <div className="round-list">
             {events.length === 0 && <p className="calendar-empty">캘린더를 불러오는 중입니다…</p>}
             {events.map((calendarEvent) => (
-              <button
+              <Link
                 className={`round-button ${calendarEvent.slug === event.slug ? "active" : ""}`}
-                disabled={isLoading}
+                href={pageHref(activeSection, calendarEvent.slug, interviewSection)}
                 key={calendarEvent.slug}
-                onClick={() => void selectEvent(calendarEvent.slug)}
-                type="button"
               >
                 <span>R{String(calendarEvent.round).padStart(2, "0")}</span>
                 <span><b>{calendarEvent.name}</b><small>{calendarEvent.country} · {calendarEvent.dateLabel.split(" · ")[0]}</small></span>
                 <i aria-hidden="true">›</i>
-              </button>
+              </Link>
             ))}
           </div>
         </aside>
 
-        <div className={`dashboard-page ${isLoading ? "loading" : ""}`} aria-busy={isLoading}>
+        <div className="dashboard-page">
       <section className="hero" id="top">
         <div>
           <p className="eyebrow">ROUND {String(event.round).padStart(2, "0")} · {event.season}</p>
@@ -489,11 +482,11 @@ export function Dashboard() {
           </div>
 
           <div className="content-tabs" role="tablist" aria-label="인터뷰 자료 구분">
-            <button className={interviewSection === "press" ? "active" : ""} onClick={() => setInterviewSection("press")} role="tab" type="button">프레스 컨퍼런스</button>
-            <button className={interviewSection === "teams" ? "active" : ""} onClick={() => { setInterviewSection("teams"); setPaddockView("team"); }} role="tab" type="button">팀 뉴스</button>
-            <button className={interviewSection === "drivers" ? "active" : ""} onClick={() => { setInterviewSection("drivers"); setPaddockView("driver"); setActiveDriver((current) => current ?? event.eventDrivers[0]?.code ?? null); setActiveTeam((current) => current ?? event.eventDrivers[0]?.teamCode ?? null); }} role="tab" type="button">선수 뉴스</button>
-            <button className={interviewSection === "videos" ? "active" : ""} onClick={() => setInterviewSection("videos")} role="tab" type="button">인터뷰 영상</button>
-            <button className={interviewSection === "media" ? "active" : ""} onClick={() => setInterviewSection("media")} role="tab" type="button">전체 미디어</button>
+            <Link className={interviewSection === "press" ? "active" : ""} href={pageHref("interviews", event.slug, "press")} role="tab">프레스 컨퍼런스</Link>
+            <Link className={interviewSection === "teams" ? "active" : ""} href={pageHref("interviews", event.slug, "teams")} onClick={() => { setInterviewSection("teams"); setPaddockView("team"); }} role="tab">팀 뉴스</Link>
+            <Link className={interviewSection === "drivers" ? "active" : ""} href={pageHref("interviews", event.slug, "drivers")} onClick={() => { setInterviewSection("drivers"); setPaddockView("driver"); setActiveDriver((current) => current ?? event.eventDrivers[0]?.code ?? null); setActiveTeam((current) => current ?? event.eventDrivers[0]?.teamCode ?? null); }} role="tab">선수 뉴스</Link>
+            <Link className={interviewSection === "videos" ? "active" : ""} href={pageHref("interviews", event.slug, "videos")} role="tab">인터뷰 영상</Link>
+            <Link className={interviewSection === "media" ? "active" : ""} href={pageHref("interviews", event.slug, "media")} role="tab">전체 미디어</Link>
           </div>
 
           <div className={`media-window ${mediaWindowOpen ? "open" : "scheduled"}`} role="status">

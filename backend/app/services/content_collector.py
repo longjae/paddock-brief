@@ -349,7 +349,7 @@ def event_is_active(event: dict[str, Any], now: datetime) -> bool:
     local_end = end.astimezone(event_timezone)
     thursday = local_end.date() - timedelta(days=(local_end.weekday() - 3) % 7)
     opens_at = datetime.combine(thursday, time.min, tzinfo=event_timezone)
-    closes_at = datetime.combine(local_end.date() + timedelta(days=1), time.max, tzinfo=event_timezone)
+    closes_at = datetime.combine(local_end.date(), time.max, tzinfo=event_timezone)
     return opens_at <= now.astimezone(event_timezone) <= closes_at
 
 

@@ -2,8 +2,8 @@ name: Collect F1 weekend content
 
 on:
   schedule:
-    # 매일 03:17 UTC(한국 시간 12:17)에 한 번 실행한다.
-    - cron: "17 3 * * *"
+    # 2시간마다 확인하되, 수집기는 각 레이스 현지시간 목~일에만 실제 작업한다.
+    - cron: "17 */2 * * *"
   workflow_dispatch:
     inputs:
       event_slug:
