@@ -4,16 +4,15 @@ from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from typing import Any
 from urllib.parse import quote
-from zoneinfo import ZoneInfo
 
 import httpx
 
 from app.schemas import ChampionshipSnapshot, EventDetail
 from app.services.media_window import media_window
+from app.services.time_format import format_kst_date_range, format_kst_datetime
 
 
 JOLPICA_BASE_URL = "https://api.jolpi.ca/ergast/f1"
-KST = ZoneInfo("Asia/Seoul")
 SESSION_KEYS = (
     ("FirstPractice", "Practice 1", "FP1"),
     ("SecondPractice", "Practice 2", "FP2"),
@@ -58,7 +57,7 @@ def _session_payload(race: dict[str, Any], now: datetime) -> list[dict[str, str]
             {
                 "name": name,
                 "shortName": short_name,
-                "startsAt": starts_at.astimezone(KST).strftime("%m월 %d일 %H:%M"),
+                "startsAt": format_kst_datetime(starts_at),
                 "status": status,
             }
         )
@@ -220,7 +219,7 @@ class JolpicaService:
             "name": race["raceName"],
             "country": location["country"],
             "circuit": race["Circuit"]["circuitName"],
-            "dateLabel": f"{start_at.astimezone(KST).month}월 {start_at.astimezone(KST).day}일 — {race_at.astimezone(KST).month}월 {race_at.astimezone(KST).day}일 · KST",
+            "dateLabel": format_kst_date_range(start_at, race_at),
             **_media_window_for_race(race),
         }
 

@@ -3,17 +3,16 @@ import re
 from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Any
-from zoneinfo import ZoneInfo
 
 import httpx
 
 from app.schemas import EventDetail
 from app.services.media_window import media_window
 from app.services.sample_data import DEMO_EVENT
+from app.services.time_format import format_kst_date_range, format_kst_datetime
 
 
 OPENF1_BASE_URL = "https://api.openf1.org/v1"
-KST = ZoneInfo("Asia/Seoul")
 
 
 def _parse_datetime(value: str) -> datetime:
@@ -131,7 +130,7 @@ class OpenF1Service:
                 {
                     "name": row["session_name"],
                     "shortName": _session_short_name(row["session_name"]),
-                    "startsAt": start.astimezone(KST).strftime("%m월 %d일 %H:%M"),
+                    "startsAt": format_kst_datetime(start),
                     "status": status,
                 }
             )
@@ -174,9 +173,7 @@ class OpenF1Service:
 
     @staticmethod
     def _date_label(start_value: str, end_value: str) -> str:
-        start = _parse_datetime(start_value).astimezone(KST)
-        end = _parse_datetime(end_value).astimezone(KST)
-        return f"{start.month}월 {start.day}일 — {end.month}월 {end.day}일 · KST"
+        return format_kst_date_range(start_value, end_value)
 
 
 @lru_cache

@@ -7,6 +7,7 @@ from app.core.config import Settings, get_settings
 from app.schemas import EventDetail
 from app.services.media_window import media_window
 from app.services.sample_data import DEMO_EVENT
+from app.services.time_format import format_kst_date_range, format_kst_datetime
 
 
 class EventRepository:
@@ -45,7 +46,7 @@ class EventRepository:
                 "name": row["short_name"],
                 "country": row["country"],
                 "circuit": row["circuit_name"],
-                "dateLabel": str(row["start_at"]),
+                "dateLabel": format_kst_date_range(row["start_at"], row["end_at"]),
                 **media_window(str(row["end_at"]), "+09:00:00"),
             }
             for row in response.data
@@ -82,7 +83,7 @@ class EventRepository:
             {
                 "name": session["name"],
                 "shortName": session["short_name"],
-                "startsAt": str(session["starts_at"]),
+                "startsAt": format_kst_datetime(session["starts_at"]),
                 "status": session["status"],
             }
             for session in session_rows
@@ -151,7 +152,7 @@ class EventRepository:
                 "country": row["country"],
                 "circuit": row["circuit_name"],
                 "trackMapUrl": row.get("track_map_url"),
-                "dateLabel": row.get("date_label") or str(row["start_at"]),
+                "dateLabel": format_kst_date_range(row["start_at"], row.get("end_at") or row["start_at"]),
                 **media_window(str(row.get("end_at") or row["start_at"]), "+09:00:00"),
                 "sessions": sessions,
                 "videos": videos,

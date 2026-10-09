@@ -6,14 +6,14 @@ DEMO_EVENT = {
     "country": "Singapore",
     "circuit": "Marina Bay Street Circuit",
     "trackMapUrl": "https://media.formula1.com/content/dam/fom-website/2018-redesign-assets/Track%20icons%204x3/Singapore%20carbon.png",
-    "dateLabel": "10월 9일 — 11일 · KST",
+    "dateLabel": "2026-10-09 — 2026-10-11 · KST",
     "mediaOpenAt": "2026-10-07T16:00:00+00:00",
     "mediaOpenLabel": "10월 8일 목요일 · 개최지 현지시간",
     "sessions": [
-        {"name": "Practice 1", "shortName": "FP1", "startsAt": "10월 9일 18:30", "status": "done"},
-        {"name": "Practice 2", "shortName": "FP2", "startsAt": "10월 9일 22:00", "status": "done"},
-        {"name": "Qualifying", "shortName": "Q", "startsAt": "10월 10일 22:00", "status": "live"},
-        {"name": "Race", "shortName": "R", "startsAt": "10월 11일 21:00", "status": "upcoming"},
+        {"name": "Practice 1", "shortName": "FP1", "startsAt": "2026-10-09 18:30", "status": "done"},
+        {"name": "Practice 2", "shortName": "FP2", "startsAt": "2026-10-09 22:00", "status": "done"},
+        {"name": "Qualifying", "shortName": "Q", "startsAt": "2026-10-10 22:00", "status": "live"},
+        {"name": "Race", "shortName": "R", "startsAt": "2026-10-11 21:00", "status": "upcoming"},
     ],
     "videos": [
         {

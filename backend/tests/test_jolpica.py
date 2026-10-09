@@ -20,6 +20,7 @@ def test_jolpica_slug_and_sessions() -> None:
     sessions = _session_payload(RACE, datetime(2026, 3, 9, tzinfo=timezone.utc))
     assert [session["shortName"] for session in sessions] == ["FP1", "Q", "R"]
     assert all(session["status"] == "done" for session in sessions)
+    assert sessions[0]["startsAt"] == "2026-03-06 10:30"
 
 
 def test_jolpica_featured_race_uses_thursday_window() -> None:

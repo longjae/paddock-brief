@@ -115,6 +115,7 @@ def test_supabase_rows_are_normalized_to_frontend_contract() -> None:
         }
     )
     assert event.sessions[0].shortName == "R"
+    assert event.sessions[0].startsAt == "2026-03-01 15:00"
     assert event.tyreAllocation.hard == "TBC"
 
 
