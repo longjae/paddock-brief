@@ -70,13 +70,16 @@ function TeamLogo({ teamCode, teamName, className = "" }: { teamCode: string; te
   const identity = normalizedIdentity(teamCode);
   const slug = TEAM_LOGO_SLUGS[identity] ?? TEAM_LOGO_SLUGS[normalizedIdentity(teamName)];
   if (!slug) return <span aria-hidden="true" className={`team-logo-fallback ${className}`}>{teamName.slice(0, 2).toUpperCase()}</span>;
+  const src = slug === "mercedes"
+    ? "/assets/team-logos/mercedes-mark.png"
+    : `https://media.formula1.com/image/upload/e_trim/c_fit,w_96,h_48/q_auto/v1740000001/common/f1/2026/${slug}/2026${slug}logowhite.webp`;
   return (
     <img
       alt=""
       className={`team-logo ${className}`}
       height="48"
       loading="lazy"
-      src={`https://media.formula1.com/image/upload/e_trim/c_fit,w_96,h_48/q_auto/v1740000001/common/f1/2026/${slug}/2026${slug}logowhite.webp`}
+      src={src}
       width="96"
     />
   );
