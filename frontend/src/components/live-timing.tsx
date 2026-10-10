@@ -6,6 +6,7 @@ import type { EventDetail, LiveTimingSnapshot } from "@/lib/types";
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 const STATUS_LABEL: Record<LiveTimingSnapshot["connection"], string> = { disabled: "수집기 대기", offline: "오프라인", connecting: "연결 중", reconnecting: "재연결 중", live: "실시간" };
 const TRACK_LABEL: Record<string, string> = { "1": "트랙 정상", "2": "황기", "4": "세이프티카", "5": "적기", "6": "가상 세이프티카", "7": "VSC 종료 중" };
+type RadioTranscript = { status: "loading" | "ready" | "failed"; text?: string | null; audioUrl?: string };
 
 function value(item: Record<string, string | number | boolean | null>, key: string): string {
   return item[key] === null || item[key] === undefined ? "" : String(item[key]);
@@ -14,6 +15,16 @@ function value(item: Record<string, string | number | boolean | null>, key: stri
 export function LiveTiming({ event }: { event: EventDetail }) {
   const [snapshot, setSnapshot] = useState<LiveTimingSnapshot | null>(null);
   const [streamState, setStreamState] = useState<"opening" | "open" | "retrying">("opening");
+  const [radioTranscripts, setRadioTranscripts] = useState<Record<string, RadioTranscript>>({});
+
+  const loadRadioTranscript = (path: string) => {
+    if (!path || radioTranscripts[path]) return;
+    setRadioTranscripts((current) => ({ ...current, [path]: { status: "loading" } }));
+    fetch(`${API_BASE}/team-radio/transcript?path=${encodeURIComponent(path)}`)
+      .then((response) => { if (!response.ok) throw new Error("transcript unavailable"); return response.json() as Promise<{ audioUrl: string; transcript?: string | null }>; })
+      .then((result) => setRadioTranscripts((current) => ({ ...current, [path]: { status: "ready", text: result.transcript, audioUrl: result.audioUrl } })))
+      .catch(() => setRadioTranscripts((current) => ({ ...current, [path]: { status: "failed" } })));
+  };
 
   useEffect(() => {
     let active = true;
@@ -52,7 +63,11 @@ export function LiveTiming({ event }: { event: EventDetail }) {
       </div></section>
       <aside className="live-side-column">
         <section className="panel live-feed-panel"><header><div><p className="eyebrow">RACE CONTROL</p><h3>레이스 컨트롤</h3></div></header><div className="live-message-list">{!snapshot?.raceControl.length && <p className="empty-state">공식 메시지를 기다리고 있습니다.</p>}{snapshot?.raceControl.map((message, index) => <article key={`${value(message, "Utc")}-${index}`}><time>{value(message, "Utc").slice(11, 19) || "—"}</time><p>{value(message, "Message") || value(message, "Category")}</p></article>)}</div></section>
-        <section className="panel live-feed-panel"><header><div><p className="eyebrow">TEAM RADIO</p><h3>팀 라디오</h3></div></header><div className="live-message-list radio-list">{!snapshot?.teamRadio.length && <p className="empty-state">공개된 팀 라디오를 기다리고 있습니다.</p>}{snapshot?.teamRadio.map((radio, index) => <article key={`${value(radio, "Utc")}-${index}`}><b>#{value(radio, "RacingNumber") || "—"}</b><p>팀 라디오가 공개되었습니다.</p><time>{value(radio, "Utc").slice(11, 19)}</time></article>)}</div></section>
+        <section className="panel live-feed-panel"><header><div><p className="eyebrow">TEAM RADIO</p><h3>팀 라디오</h3></div></header><div className="live-message-list radio-list">{!snapshot?.teamRadio.length && <p className="empty-state">공개된 팀 라디오를 기다리고 있습니다.</p>}{snapshot?.teamRadio.map((radio, index) => {
+          const path = value(radio, "Path");
+          const transcript = radioTranscripts[path];
+          return <article key={`${value(radio, "Utc")}-${index}`} onFocus={() => loadRadioTranscript(path)} onMouseEnter={() => loadRadioTranscript(path)} tabIndex={0}><b>#{value(radio, "RacingNumber") || "—"}</b><p>마우스를 올리면 음성과 내용을 확인할 수 있습니다.</p><time>{value(radio, "Utc").slice(11, 19)}</time><div className="radio-transcript" role="status">{transcript?.status === "loading" && <p>팀 라디오 음성을 텍스트로 변환 중입니다…</p>}{transcript?.status === "failed" && <p>텍스트 변환에 실패했습니다. 다음 업데이트에서 다시 시도합니다.</p>}{transcript?.status === "ready" && <><p>{transcript.text || "음성은 재생할 수 있지만 명확한 발화를 인식하지 못했습니다."}</p>{transcript.audioUrl && <audio controls preload="none" src={transcript.audioUrl}>팀 라디오 오디오</audio>}</>}</div></article>;
+        })}</div></section>
       </aside>
     </div>
     <p className="live-disclaimer">F1의 비공식 라이브 타이밍 피드를 사용합니다. 중계 화면보다 지연되거나 일부 항목이 제공되지 않을 수 있습니다. 최종 결과는 경기 종료 후 공식 자료로 보정합니다.</p>

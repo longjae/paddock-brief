@@ -1,5 +1,7 @@
+import pytest
+
 from app.core.config import Settings
-from app.services.live_timing import LiveTimingService, _deep_merge
+from app.services.live_timing import LiveTimingService, _deep_merge, team_radio_audio_url
 
 
 def test_deep_merge_preserves_existing_timing_fields() -> None:
@@ -66,3 +68,10 @@ def test_snapshot_does_not_mix_another_grand_prix() -> None:
     }
     assert service.snapshot("2026-singapore")["drivers"]
     assert service.snapshot("2026-japanese")["drivers"] == []
+
+
+def test_team_radio_audio_url_is_restricted_to_official_paths() -> None:
+    path = "TeamRadio/VER_3_20261010_173427.mp3"
+    assert team_radio_audio_url(path) == f"https://livetiming.formula1.com/static/2026/{path}"
+    with pytest.raises(ValueError):
+        team_radio_audio_url("https://example.com/radio.mp3")

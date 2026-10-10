@@ -304,8 +304,12 @@ export function Dashboard({
 
   useEffect(() => {
     setCurrentTime(Date.now());
+    document.documentElement.classList.toggle("windows-fonts", /Windows/i.test(window.navigator.userAgent));
     const clock = window.setInterval(() => setCurrentTime(Date.now()), 60_000);
-    return () => window.clearInterval(clock);
+    return () => {
+      window.clearInterval(clock);
+      document.documentElement.classList.remove("windows-fonts");
+    };
   }, []);
 
   useEffect(() => {

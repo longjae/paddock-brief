@@ -14,6 +14,7 @@ from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
 
+import httpx
 import websockets
 
 from app.core.config import Settings
@@ -33,6 +34,15 @@ PUBLIC_TOPICS = [
     "LapCount",
     "ExtrapolatedClock",
 ]
+TEAM_RADIO_PATH_RE = re.compile(r"^TeamRadio/[A-Za-z0-9_-]+\.mp3$")
+
+
+def team_radio_audio_url(path: str) -> str:
+    if not TEAM_RADIO_PATH_RE.fullmatch(path):
+        raise ValueError("Invalid team radio path")
+    match = re.search(r"_(20\d{2})\d{4}_", path)
+    year = match.group(1) if match else str(datetime.now(UTC).year)
+    return f"https://livetiming.formula1.com/static/{year}/{path}"
 
 
 def _deep_merge(current: Any, update: Any) -> Any:
@@ -64,7 +74,29 @@ class LiveTimingService:
         self.last_error: str | None = None
         self.updated_at: str | None = None
         self.topics: dict[str, Any] = {}
+        self.radio_transcripts: dict[str, str] = {}
         self._task: asyncio.Task[None] | None = None
+
+    async def transcribe_team_radio(self, path: str) -> dict[str, str | None]:
+        audio_url = team_radio_audio_url(path)
+        if path in self.radio_transcripts:
+            return {"audioUrl": audio_url, "transcript": self.radio_transcripts[path], "language": "en"}
+        if not self.settings.openai_api_key:
+            return {"audioUrl": audio_url, "transcript": None, "language": None}
+        async with httpx.AsyncClient(timeout=45, follow_redirects=True) as client:
+            audio_response = await client.get(audio_url, headers={"User-Agent": self.settings.collector_user_agent})
+            audio_response.raise_for_status()
+            transcript_response = await client.post(
+                "https://api.openai.com/v1/audio/transcriptions",
+                headers={"Authorization": f"Bearer {self.settings.openai_api_key}"},
+                data={"model": "gpt-4o-mini-transcribe", "response_format": "json"},
+                files={"file": (path.rsplit("/", 1)[-1], audio_response.content, "audio/mpeg")},
+            )
+            transcript_response.raise_for_status()
+        transcript = str(transcript_response.json().get("text") or "").strip()
+        if transcript:
+            self.radio_transcripts[path] = transcript
+        return {"audioUrl": audio_url, "transcript": transcript or None, "language": "en" if transcript else None}
 
     def start(self) -> None:
         if self.settings.live_timing_enabled and self._task is None:
