@@ -247,23 +247,25 @@ function ContentDetailModal({ item, onClose }: { item: ModalContent; onClose: ()
     <div className="content-modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <section aria-describedby="content-modal-summary" aria-labelledby="content-modal-title" aria-modal="true" className="content-modal" role="dialog" style={{ "--team-colour": item.colour } as React.CSSProperties}>
         <button aria-label="상세 내용 닫기" autoFocus className="modal-close" onClick={onClose} type="button">×</button>
-        <div className="modal-meta"><span>{item.context}</span><em>{item.source}</em></div>
-        <h3 id="content-modal-title">{item.title}</h3>
-        <div className="modal-summary" id="content-modal-summary">
-          <small>한눈에 보기</small>
-          <p>{item.summary}</p>
+        <div className="content-modal-scroll">
+          <div className="modal-meta"><span>{item.context}</span><em>{item.source}</em></div>
+          <h3 id="content-modal-title">{item.title}</h3>
+          <div className="modal-summary" id="content-modal-summary">
+            <small>한눈에 보기</small>
+            <p>{item.summary}</p>
+          </div>
+          <div className="modal-detail">
+            <small>{item.detailLabel}</small>
+            {detailSections.map((section, index) => (
+              <article key={`${section[0]}-${index}`}>
+                <h4>{section.length > 1 ? section[0] : `핵심 내용 ${index + 1}`}</h4>
+                <p>{section.length > 1 ? section.slice(1).join(" ") : section[0]}</p>
+              </article>
+            ))}
+          </div>
+          {item.participants.length > 0 && <p className="modal-participants">{item.participants.join(" · ")}</p>}
+          <a className="modal-source-link" href={item.url} rel="noreferrer" target="_blank">{item.source}에서 원문 보기 ↗</a>
         </div>
-        <div className="modal-detail">
-          <small>{item.detailLabel}</small>
-          {detailSections.map((section, index) => (
-            <article key={`${section[0]}-${index}`}>
-              <h4>{section.length > 1 ? section[0] : `핵심 내용 ${index + 1}`}</h4>
-              <p>{section.length > 1 ? section.slice(1).join(" ") : section[0]}</p>
-            </article>
-          ))}
-        </div>
-        {item.participants.length > 0 && <p className="modal-participants">{item.participants.join(" · ")}</p>}
-        <a className="modal-source-link" href={item.url} rel="noreferrer" target="_blank">{item.source}에서 원문 보기 ↗</a>
       </section>
     </div>
   );

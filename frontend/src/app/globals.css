@@ -210,8 +210,9 @@ h1 { font-size: clamp(46px, 6vw, 84px); letter-spacing: -.065em; line-height: .9
 .team-content-card footer small:nth-child(2) { grid-column: 1 / -1; }
 .team-content-card footer b { grid-column: 2; grid-row: 1; color: var(--lime); font: 8px var(--font-mono); }
 .content-modal-backdrop { position: fixed; z-index: 1000; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(2,3,3,.82); backdrop-filter: blur(10px); }
-.content-modal { position: relative; width: min(680px, 100%); max-height: min(82vh, 780px); overflow-y: auto; padding: 32px; background: #151817; border: 1px solid color-mix(in srgb, var(--team-colour) 62%, #333); border-radius: 18px; box-shadow: 0 28px 90px rgba(0,0,0,.55), inset 4px 0 var(--team-colour); }
-.modal-close { position: absolute; top: 16px; right: 16px; width: 34px; height: 34px; display: grid; place-items: center; color: #aeb1ab; background: #222524; border: 1px solid var(--line); border-radius: 50%; cursor: pointer; font-size: 22px; line-height: 1; }
+.content-modal { position: relative; width: min(680px, 100%); max-height: min(82vh, 780px); overflow: hidden; background: #151817; border: 1px solid color-mix(in srgb, var(--team-colour) 62%, #333); border-radius: 18px; box-shadow: 0 28px 90px rgba(0,0,0,.55), inset 4px 0 var(--team-colour); }
+.content-modal-scroll { max-height: min(82vh, 780px); overflow-y: auto; padding: 32px; }
+.modal-close { position: absolute; z-index: 2; top: 16px; right: 16px; width: 34px; height: 34px; display: grid; place-items: center; color: #aeb1ab; background: #222524; border: 1px solid var(--line); border-radius: 50%; box-shadow: 0 3px 14px rgba(0,0,0,.35); cursor: pointer; font-size: 22px; line-height: 1; }
 .modal-close:hover, .modal-close:focus-visible { color: var(--ink); border-color: var(--team-colour); outline: none; }
 .modal-meta { display: flex; gap: 12px; align-items: center; padding-right: 44px; }
 .modal-meta span { color: var(--team-colour); font: 750 10px var(--font-mono); text-transform: uppercase; letter-spacing: .08em; }
@@ -364,7 +365,8 @@ footer { display: flex; justify-content: space-between; padding: 20px 2px 34px; 
 }
 @media (max-width: 520px) {
   .content-modal-backdrop { align-items: end; padding: 0; }
-  .content-modal { width: 100%; max-height: 90vh; padding: 26px 18px 20px; border-radius: 18px 18px 0 0; }
+  .content-modal { width: 100%; max-height: 90vh; border-radius: 18px 18px 0 0; }
+  .content-modal-scroll { max-height: 90vh; padding: 26px 18px 20px; }
   .content-modal h3 { margin-right: 38px; }
   .modal-summary, .modal-detail { padding: 15px; }
   .standing-row { grid-template-columns: 26px minmax(0,1fr) 42px 56px; gap: 7px; }
