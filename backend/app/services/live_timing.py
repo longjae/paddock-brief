@@ -35,14 +35,13 @@ PUBLIC_TOPICS = [
     "ExtrapolatedClock",
 ]
 TEAM_RADIO_PATH_RE = re.compile(r"^TeamRadio/[A-Za-z0-9_-]+\.mp3$")
+SESSION_PATH_RE = re.compile(r"^[A-Za-z0-9_/-]+/$")
 
 
-def team_radio_audio_url(path: str) -> str:
-    if not TEAM_RADIO_PATH_RE.fullmatch(path):
+def team_radio_audio_url(path: str, session_path: str) -> str:
+    if not TEAM_RADIO_PATH_RE.fullmatch(path) or not SESSION_PATH_RE.fullmatch(session_path) or ".." in session_path:
         raise ValueError("Invalid team radio path")
-    match = re.search(r"_(20\d{2})\d{4}_", path)
-    year = match.group(1) if match else str(datetime.now(UTC).year)
-    return f"https://livetiming.formula1.com/static/{year}/{path}"
+    return f"https://livetiming.formula1.com/static/{session_path}{path}"
 
 
 def _deep_merge(current: Any, update: Any) -> Any:
@@ -77,8 +76,8 @@ class LiveTimingService:
         self.radio_transcripts: dict[str, str] = {}
         self._task: asyncio.Task[None] | None = None
 
-    async def transcribe_team_radio(self, path: str) -> dict[str, str | None]:
-        audio_url = team_radio_audio_url(path)
+    async def transcribe_team_radio(self, path: str, session_path: str) -> dict[str, str | None]:
+        audio_url = team_radio_audio_url(path, session_path)
         if path in self.radio_transcripts:
             return {"audioUrl": audio_url, "transcript": self.radio_transcripts[path], "language": "en"}
         if not self.settings.openai_api_key:
@@ -219,6 +218,15 @@ class LiveTimingService:
         lap_count = self.topics.get("LapCount", {})
         track = self.topics.get("TrackStatus", {})
         clock = self.topics.get("ExtrapolatedClock", {})
+        session_path = str(session_info.get("Path") or "")
+        radio_items = _items(radio)[-12:][::-1]
+        for item in radio_items:
+            path = str(item.get("Path") or "")
+            try:
+                item["AudioUrl"] = team_radio_audio_url(path, session_path)
+                item["SessionPath"] = session_path
+            except ValueError:
+                pass
         return {
             "event": event_slug,
             "connection": self.connection if self.settings.live_timing_enabled else "disabled",
@@ -236,7 +244,7 @@ class LiveTimingService:
             "weather": self.topics.get("WeatherData", {}),
             "drivers": rows,
             "raceControl": _items(race_control)[-20:][::-1],
-            "teamRadio": _items(radio)[-12:][::-1],
+            "teamRadio": radio_items,
             "lastError": self.last_error,
         }
 

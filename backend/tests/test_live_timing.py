@@ -72,6 +72,9 @@ def test_snapshot_does_not_mix_another_grand_prix() -> None:
 
 def test_team_radio_audio_url_is_restricted_to_official_paths() -> None:
     path = "TeamRadio/VER_3_20261010_173427.mp3"
-    assert team_radio_audio_url(path) == f"https://livetiming.formula1.com/static/2026/{path}"
+    session_path = "2026/2026-10-10_Singapore_Grand_Prix/2026-10-10_Sprint/"
+    assert team_radio_audio_url(path, session_path) == f"https://livetiming.formula1.com/static/{session_path}{path}"
     with pytest.raises(ValueError):
-        team_radio_audio_url("https://example.com/radio.mp3")
+        team_radio_audio_url("https://example.com/radio.mp3", session_path)
+    with pytest.raises(ValueError):
+        team_radio_audio_url(path, "../../private/")

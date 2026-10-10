@@ -17,10 +17,10 @@ export function LiveTiming({ event }: { event: EventDetail }) {
   const [streamState, setStreamState] = useState<"opening" | "open" | "retrying">("opening");
   const [radioTranscripts, setRadioTranscripts] = useState<Record<string, RadioTranscript>>({});
 
-  const loadRadioTranscript = (path: string) => {
+  const loadRadioTranscript = (path: string, sessionPath: string, audioUrl: string) => {
     if (!path || radioTranscripts[path]) return;
-    setRadioTranscripts((current) => ({ ...current, [path]: { status: "loading" } }));
-    fetch(`${API_BASE}/team-radio/transcript?path=${encodeURIComponent(path)}`)
+    setRadioTranscripts((current) => ({ ...current, [path]: { status: "loading", audioUrl } }));
+    fetch(`${API_BASE}/team-radio/transcript?path=${encodeURIComponent(path)}&sessionPath=${encodeURIComponent(sessionPath)}`)
       .then((response) => { if (!response.ok) throw new Error("transcript unavailable"); return response.json() as Promise<{ audioUrl: string; transcript?: string | null }>; })
       .then((result) => setRadioTranscripts((current) => ({ ...current, [path]: { status: "ready", text: result.transcript, audioUrl: result.audioUrl } })))
       .catch(() => setRadioTranscripts((current) => ({ ...current, [path]: { status: "failed" } })));
@@ -65,8 +65,10 @@ export function LiveTiming({ event }: { event: EventDetail }) {
         <section className="panel live-feed-panel"><header><div><p className="eyebrow">RACE CONTROL</p><h3>레이스 컨트롤</h3></div></header><div className="live-message-list">{!snapshot?.raceControl.length && <p className="empty-state">공식 메시지를 기다리고 있습니다.</p>}{snapshot?.raceControl.map((message, index) => <article key={`${value(message, "Utc")}-${index}`}><time>{value(message, "Utc").slice(11, 19) || "—"}</time><p>{value(message, "Message") || value(message, "Category")}</p></article>)}</div></section>
         <section className="panel live-feed-panel"><header><div><p className="eyebrow">TEAM RADIO</p><h3>팀 라디오</h3></div></header><div className="live-message-list radio-list">{!snapshot?.teamRadio.length && <p className="empty-state">공개된 팀 라디오를 기다리고 있습니다.</p>}{snapshot?.teamRadio.map((radio, index) => {
           const path = value(radio, "Path");
+          const sessionPath = value(radio, "SessionPath");
+          const audioUrl = value(radio, "AudioUrl");
           const transcript = radioTranscripts[path];
-          return <article key={`${value(radio, "Utc")}-${index}`} onFocus={() => loadRadioTranscript(path)} onMouseEnter={() => loadRadioTranscript(path)} tabIndex={0}><b>#{value(radio, "RacingNumber") || "—"}</b><p>마우스를 올리면 음성과 내용을 확인할 수 있습니다.</p><time>{value(radio, "Utc").slice(11, 19)}</time><div className="radio-transcript" role="status">{transcript?.status === "loading" && <p>팀 라디오 음성을 텍스트로 변환 중입니다…</p>}{transcript?.status === "failed" && <p>텍스트 변환에 실패했습니다. 다음 업데이트에서 다시 시도합니다.</p>}{transcript?.status === "ready" && <><p>{transcript.text || "음성은 재생할 수 있지만 명확한 발화를 인식하지 못했습니다."}</p>{transcript.audioUrl && <audio controls preload="none" src={transcript.audioUrl}>팀 라디오 오디오</audio>}</>}</div></article>;
+          return <article key={`${value(radio, "Utc")}-${index}`} onFocus={() => loadRadioTranscript(path, sessionPath, audioUrl)} onMouseEnter={() => loadRadioTranscript(path, sessionPath, audioUrl)} tabIndex={0}><b>#{value(radio, "RacingNumber") || "—"}</b><p>마우스를 올리면 음성과 내용을 확인할 수 있습니다.</p><time>{value(radio, "Utc").slice(11, 19)}</time><div className="radio-transcript" role="status">{transcript?.status === "loading" && <><p>팀 라디오 음성을 텍스트로 변환 중입니다…</p>{transcript.audioUrl && <audio controls preload="none" src={transcript.audioUrl}>팀 라디오 오디오</audio>}</>}{transcript?.status === "failed" && <><p>텍스트 변환에 실패했습니다. 음성은 직접 재생할 수 있습니다.</p>{audioUrl && <audio controls preload="none" src={audioUrl}>팀 라디오 오디오</audio>}</>}{transcript?.status === "ready" && <><p>{transcript.text || "음성은 재생할 수 있지만 명확한 발화를 인식하지 못했습니다."}</p>{transcript.audioUrl && <audio controls preload="none" src={transcript.audioUrl}>팀 라디오 오디오</audio>}</>}</div></article>;
         })}</div></section>
       </aside>
     </div>

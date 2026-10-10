@@ -140,9 +140,9 @@ async def get_live_stream(slug: str, request: Request) -> StreamingResponse:
 
 
 @router.get("/team-radio/transcript")
-async def get_team_radio_transcript(path: str) -> dict[str, str | None]:
+async def get_team_radio_transcript(path: str, sessionPath: str) -> dict[str, str | None]:
     try:
-        return await get_live_timing_service().transcribe_team_radio(path)
+        return await get_live_timing_service().transcribe_team_radio(path, sessionPath)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     except httpx.HTTPError as error:
