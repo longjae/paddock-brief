@@ -55,6 +55,24 @@ def test_non_feed_signalr_messages_are_ignored() -> None:
     assert service.topics == {}
 
 
+def test_race_control_messages_are_retained_when_upstream_delta_removes_them() -> None:
+    service = LiveTimingService(Settings(app_use_sample_data=True))
+    service.consume_signalr({"type": 1, "target": "feed", "arguments": ["SessionInfo", {"Path": "2026/test/race/", "Meeting": {"Name": "Test Grand Prix"}}, "now"]})
+    service.consume_signalr({"type": 1, "target": "feed", "arguments": ["RaceControlMessages", {"Messages": {"1": {"Utc": "2026-01-01T00:00:01Z", "Category": "Flag", "Message": "YELLOW FLAG"}}}, "now"]})
+    service.consume_signalr({"type": 1, "target": "feed", "arguments": ["RaceControlMessages", {"Messages": {"1": None, "2": {"Utc": "2026-01-01T00:00:02Z", "Category": "Flag", "Message": "GREEN FLAG"}}}, "now"]})
+
+    messages = service.snapshot("2026-test")["raceControl"]
+    assert [message["Message"] for message in messages] == ["GREEN FLAG", "YELLOW FLAG"]
+
+
+def test_race_control_history_resets_when_session_changes() -> None:
+    service = LiveTimingService(Settings(app_use_sample_data=True))
+    service._track_session({"Path": "2026/test/sprint/"})
+    service._capture_race_control({"Messages": [{"Utc": "1", "Message": "SPRINT MESSAGE"}]})
+    service._track_session({"Path": "2026/test/qualifying/"})
+    assert service.race_control_history == {}
+
+
 def test_signalr_subscription_result_seeds_full_session_state() -> None:
     service = LiveTimingService(Settings(app_use_sample_data=True))
     service.consume_signalr(

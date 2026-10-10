@@ -96,7 +96,33 @@ class LiveTimingService:
         self.updated_at: str | None = None
         self.topics: dict[str, Any] = {}
         self.radio_transcripts: dict[str, str] = {}
+        self.race_control_history: dict[str, dict[str, Any]] = {}
+        self._session_path: str | None = None
         self._task: asyncio.Task[None] | None = None
+
+    def _capture_race_control(self, payload: Any) -> None:
+        if not isinstance(payload, dict):
+            return
+        messages = payload.get("Messages", payload)
+        for item in _items(messages):
+            key = "|".join(
+                str(item.get(field) or "")
+                for field in ("Utc", "Message", "Category", "Flag", "RacingNumber")
+            )
+            if key.strip("|"):
+                self.race_control_history[key] = deepcopy(item)
+        while len(self.race_control_history) > 200:
+            self.race_control_history.pop(next(iter(self.race_control_history)))
+
+    def _track_session(self, payload: Any) -> None:
+        if not isinstance(payload, dict):
+            return
+        path = str(payload.get("Path") or "")
+        if path and self._session_path and path != self._session_path:
+            self.race_control_history.clear()
+            self.radio_transcripts.clear()
+        if path:
+            self._session_path = path
 
     async def transcribe_team_radio(self, path: str, session_path: str) -> dict[str, str | None]:
         audio_url = team_radio_audio_url(path, session_path)
@@ -179,6 +205,10 @@ class LiveTimingService:
                 for topic in PUBLIC_TOPICS:
                     if topic in result:
                         self.topics[topic] = _deep_merge(self.topics.get(topic, {}), result[topic])
+                        if topic == "SessionInfo":
+                            self._track_session(result[topic])
+                        elif topic == "RaceControlMessages":
+                            self._capture_race_control(result[topic])
                 self.updated_at = datetime.now(UTC).isoformat()
                 self.connection = "live"
             return
@@ -190,6 +220,10 @@ class LiveTimingService:
         topic, payload = arguments[0], arguments[1]
         if topic not in PUBLIC_TOPICS:
             return
+        if topic == "SessionInfo":
+            self._track_session(payload)
+        elif topic == "RaceControlMessages":
+            self._capture_race_control(payload)
         self.topics[topic] = _deep_merge(self.topics.get(topic, {}), payload)
         self.updated_at = datetime.now(UTC).isoformat()
         self.connection = "live"
@@ -272,6 +306,7 @@ class LiveTimingService:
         if not event_matches:
             rows = []
         race_control = self.topics.get("RaceControlMessages", {}).get("Messages", {})
+        self._capture_race_control({"Messages": race_control})
         radio = self.topics.get("TeamRadio", {}).get("Captures", {})
         lap_count = self.topics.get("LapCount", {})
         track = self.topics.get("TrackStatus", {})
@@ -307,7 +342,7 @@ class LiveTimingService:
                 "message": "공식 라이브 피드는 각 드라이버의 전체 잔여 타이어 세트 수를 제공하지 않습니다.",
             },
             "drivers": rows,
-            "raceControl": _items(race_control)[-20:][::-1],
+            "raceControl": list(self.race_control_history.values())[-50:][::-1],
             "teamRadio": radio_items,
             "lastError": self.last_error,
         }

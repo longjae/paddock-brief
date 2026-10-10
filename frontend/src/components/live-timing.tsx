@@ -43,6 +43,14 @@ export function LiveTiming({ event }: { event: EventDetail }) {
     return () => { active = false; stream.close(); };
   }, [event.slug]);
 
+  useEffect(() => {
+    for (const radio of snapshot?.teamRadio ?? []) {
+      const path = value(radio, "Path");
+      if (!path || radioTranscripts[path]) continue;
+      loadRadioTranscript(path, value(radio, "SessionPath"), value(radio, "AudioUrl"));
+    }
+  }, [snapshot?.teamRadio, radioTranscripts]);
+
   const updatedLabel = useMemo(() => !snapshot?.updatedAt ? "아직 수신된 라이브 신호가 없습니다" : `${new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Asia/Seoul" }).format(new Date(snapshot.updatedAt))} KST 갱신`, [snapshot?.updatedAt]);
   const connection = snapshot?.connection ?? (streamState === "retrying" ? "reconnecting" : "connecting");
   const statusLabel = connection === "live" && !snapshot?.isLive ? "피드 연결 · 세션 대기" : STATUS_LABEL[connection];
@@ -75,7 +83,7 @@ export function LiveTiming({ event }: { event: EventDetail }) {
           const sessionPath = value(radio, "SessionPath");
           const audioUrl = value(radio, "AudioUrl");
           const transcript = radioTranscripts[path];
-          return <article key={`${value(radio, "Utc")}-${index}`} onFocus={() => loadRadioTranscript(path, sessionPath, audioUrl)} onMouseEnter={() => loadRadioTranscript(path, sessionPath, audioUrl)} tabIndex={0}><b>#{value(radio, "RacingNumber") || "—"}</b><p>마우스를 올리면 음성과 내용을 확인할 수 있습니다.</p><time>{value(radio, "Utc").slice(11, 19)}</time><div className="radio-transcript" role="status">{transcript?.status === "loading" && <><p>팀 라디오 음성을 텍스트로 변환 중입니다…</p>{transcript.audioUrl && <audio controls preload="none" src={transcript.audioUrl}>팀 라디오 오디오</audio>}</>}{transcript?.status === "failed" && <><p>텍스트 변환에 실패했습니다. 음성은 직접 재생할 수 있습니다.</p>{audioUrl && <audio controls preload="none" src={audioUrl}>팀 라디오 오디오</audio>}</>}{transcript?.status === "ready" && <><p>{transcript.text || "음성은 재생할 수 있지만 명확한 발화를 인식하지 못했습니다."}</p>{transcript.audioUrl && <audio controls preload="none" src={transcript.audioUrl}>팀 라디오 오디오</audio>}</>}</div></article>;
+          return <article key={`${value(radio, "Utc")}-${index}`}><b>#{value(radio, "RacingNumber") || "—"}</b><time>{value(radio, "Utc").slice(11, 19)}</time><div className="radio-transcript" role="status">{!transcript && <><p>팀 라디오 내용을 불러오는 중입니다…</p>{audioUrl && <audio controls preload="none" src={audioUrl}>팀 라디오 오디오</audio>}</>}{transcript?.status === "loading" && <><p>팀 라디오 음성을 텍스트로 변환 중입니다…</p>{transcript.audioUrl && <audio controls preload="none" src={transcript.audioUrl}>팀 라디오 오디오</audio>}</>}{transcript?.status === "failed" && <><p>텍스트 변환에 실패했습니다. 음성은 직접 재생할 수 있습니다.</p>{audioUrl && <audio controls preload="none" src={audioUrl}>팀 라디오 오디오</audio>}</>}{transcript?.status === "ready" && <><p>{transcript.text || "음성은 재생할 수 있지만 명확한 발화를 인식하지 못했습니다."}</p>{transcript.audioUrl && <audio controls preload="none" src={transcript.audioUrl}>팀 라디오 오디오</audio>}</>}</div></article>;
         })}</div></section>
       </aside>
     </div>
