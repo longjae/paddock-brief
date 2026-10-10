@@ -9,8 +9,8 @@
   --red: #ff314a;
   --yellow: #ffd12e;
   --cyan: #56d9ce;
-  --font-geist: Inter, Pretendard, "Apple SD Gothic Neo", system-ui, sans-serif;
-  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --font-geist: "Pretendard Variable", Pretendard, "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-mono: "Pretendard Variable", Pretendard, "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -362,9 +362,9 @@ footer { display: flex; justify-content: space-between; padding: 20px 2px 34px; 
 .radio-transcript audio { width: 100%; height: 28px; margin-top: 8px; }
 
 .windows-fonts body { font-size: 16px; }
-.windows-fonts :where(small, .eyebrow, .live-tower-head, .live-feed-panel time, .standing-row > span small, .standing-row > em small) { font-size: 11px !important; }
-.windows-fonts :where(.team-content-card > p, .news-card p, .driver-links small, .live-message-list p, .live-disclaimer) { font-size: 12px; }
-.windows-fonts :where(.topbar nav a, .content-tabs a, .race-day-tabs button, .glossary-categories button) { font-size: 12px; }
+.windows-fonts :where(small, .eyebrow, .live-tower-head, .live-feed-panel time, .standing-row > span small, .standing-row > em small) { font-size: 14px !important; }
+.windows-fonts :where(.team-content-card > p, .news-card p, .driver-links small, .live-message-list p, .live-disclaimer) { font-size: 14px; }
+.windows-fonts :where(.topbar nav a, .content-tabs a, .race-day-tabs button, .glossary-categories button) { font-size: 14px; }
 
 @media (max-width: 980px) {
   main { padding: 0 20px; }.topbar { gap: 18px; }.topbar nav { display: flex; gap: 15px; order: 3; width: 100%; height: 42px; overflow-x: auto; }.topbar nav a { flex: 1 0 auto; padding: 10px 0; }.topbar { height: auto; min-height: 72px; flex-wrap: wrap; padding-top: 12px; }.event-select { display: block; margin-left: auto; }.data-pill { margin-left: 0; }.app-shell { display: block; }.calendar-sidebar { display: none; }.hero { grid-template-columns: 1fr; padding: 60px 0 20px; }.track-card { justify-self: stretch; border-left: 0; }.session-strip { grid-template-columns: 1fr 1fr; }.content-grid { grid-template-columns: 1fr; }.sidebar { display: grid; grid-template-columns: 1fr 1fr; }.driver-roster { grid-template-columns: repeat(4, 1fr); }.weekend-days { grid-template-columns: 1fr; }.compact-card-grid { grid-template-columns: 1fr 1fr; }.race-centre-grid, .standings-grid, .glossary-grid, .live-grid { grid-template-columns: 1fr; }.glossary-search { flex-basis: 100%; width: 100%; }
