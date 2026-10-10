@@ -136,7 +136,10 @@ export type ChampionshipSnapshot = {
 export type LiveTimingDriver = {
   position: number; number: string; code: string; name: string; team: string; colour: string;
   gap: string; interval: string; lastLap: string; bestLap: string; sectors: string[];
-  compound: string; tyreAge: number; inPit: boolean; retired: boolean;
+  sectorFlags: Array<{ personalFastest: boolean; overallFastest: boolean }>;
+  compound: string; tyreAge: number; tyreNew: boolean; stint: number;
+  tyreHistory: Array<{ compound: string; laps: number; new: boolean }>;
+  inPit: boolean; retired: boolean;
 };
 
 export type LiveTimingSnapshot = {
@@ -148,6 +151,9 @@ export type LiveTimingSnapshot = {
   session: { name: string; meeting?: string | null; remaining: string; lap: number; totalLaps: number };
   trackStatus: { code: string; message: string };
   weather: Record<string, string | number | boolean | null>;
+  fastestLap?: { driver: string; time: string } | null;
+  fastestSectors?: Array<{ sector: number; driver: string; time: string }>;
+  tyreInventory?: { available: boolean; message: string };
   drivers: LiveTimingDriver[];
   raceControl: Array<Record<string, string | number | boolean | null>>;
   teamRadio: Array<Record<string, string | number | boolean | null>>;

@@ -27,6 +27,9 @@ PUBLIC_TOPICS = [
     "SessionData",
     "TimingData",
     "TimingAppData",
+    "TimingStats",
+    "CurrentTyres",
+    "TyreStintSeries",
     "TrackStatus",
     "WeatherData",
     "RaceControlMessages",
@@ -64,6 +67,25 @@ def _items(value: Any) -> list[dict[str, Any]]:
     if isinstance(value, dict):
         return [item for item in value.values() if isinstance(item, dict)]
     return []
+
+
+def _seconds(value: Any) -> float | None:
+    text = str(value or "").strip()
+    if not text or text == "—":
+        return None
+    try:
+        parts = [float(part) for part in text.split(":")]
+    except ValueError:
+        return None
+    if len(parts) == 1:
+        return parts[0]
+    if len(parts) == 2:
+        return parts[0] * 60 + parts[1]
+    return parts[-3] * 3600 + parts[-2] * 60 + parts[-1]
+
+
+def _flag(value: Any) -> bool:
+    return value is True or str(value).lower() == "true"
 
 
 class LiveTimingService:
@@ -175,6 +197,11 @@ class LiveTimingService:
     def snapshot(self, event_slug: str) -> dict[str, Any]:
         timing = self.topics.get("TimingData", {}).get("Lines", {})
         app = self.topics.get("TimingAppData", {}).get("Lines", {})
+        stats = self.topics.get("TimingStats", {}).get("Lines", {})
+        current_topic = self.topics.get("CurrentTyres", {})
+        current_tyres = current_topic.get("Tyres") or current_topic.get("Lines") or current_topic
+        series_topic = self.topics.get("TyreStintSeries", {})
+        tyre_series = series_topic.get("Stints") or series_topic.get("Lines") or {}
         drivers = self.topics.get("DriverList", {})
         rows: list[dict[str, Any]] = []
         for number, line in timing.items() if isinstance(timing, dict) else []:
@@ -182,9 +209,17 @@ class LiveTimingService:
                 continue
             identity = drivers.get(str(number), {}) if isinstance(drivers, dict) else {}
             stint_source = app.get(str(number), {}) if isinstance(app, dict) else {}
-            stints = _items(stint_source.get("Stints", {}))
+            series_source = tyre_series.get(str(number), {}) if isinstance(tyre_series, dict) else {}
+            stints = _items(series_source) or _items(stint_source.get("Stints", {}))
             stint = stints[-1] if stints else {}
-            sectors = _items(line.get("Sectors", {}))
+            current = current_tyres.get(str(number), {}) if isinstance(current_tyres, dict) else {}
+            if isinstance(current, str):
+                current = {"Compound": current}
+            stat_line = stats.get(str(number), {}) if isinstance(stats, dict) else {}
+            timing_sectors = _items(line.get("Sectors", {}))
+            best_sectors = _items(stat_line.get("BestSectors", {}))
+            sectors = best_sectors or timing_sectors
+            compound = str(current.get("Compound") or stint.get("Compound") or "UNKNOWN").upper()
             rows.append(
                 {
                     "position": int(line.get("Position") or 99),
@@ -198,13 +233,36 @@ class LiveTimingService:
                     "lastLap": (line.get("LastLapTime") or {}).get("Value", "—"),
                     "bestLap": (line.get("BestLapTime") or {}).get("Value", "—"),
                     "sectors": [(sector.get("Value") or "—") for sector in sectors[:3]],
-                    "compound": str(stint.get("Compound") or "UNKNOWN").upper(),
+                    "sectorFlags": [
+                        {"personalFastest": _flag(sector.get("PersonalFastest")), "overallFastest": _flag(sector.get("OverallFastest"))}
+                        for sector in timing_sectors[:3]
+                    ],
+                    "compound": compound,
                     "tyreAge": int(stint.get("TotalLaps") or 0),
+                    "tyreNew": _flag(current.get("New", stint.get("New"))),
+                    "stint": len(stints),
+                    "tyreHistory": [
+                        {
+                            "compound": str(item.get("Compound") or "UNKNOWN").upper(),
+                            "laps": int(item.get("TotalLaps") or 0),
+                            "new": _flag(item.get("New")),
+                        }
+                        for item in stints
+                    ],
                     "inPit": bool(line.get("InPit") or line.get("PitOut")),
                     "retired": bool(line.get("Retired") or line.get("Stopped")),
                 }
             )
         rows.sort(key=lambda row: row["position"])
+        lap_candidates = [row for row in rows if _seconds(row["bestLap"]) is not None]
+        fastest_lap = min(lap_candidates, key=lambda row: _seconds(row["bestLap"]) or 999999) if lap_candidates else None
+        fastest_sectors: list[dict[str, Any]] = []
+        for index in range(3):
+            candidates = [row for row in rows if index < len(row["sectors"]) and _seconds(row["sectors"][index]) is not None]
+            leader = min(candidates, key=lambda row: _seconds(row["sectors"][index]) or 999999) if candidates else None
+            fastest_sectors.append(
+                {"sector": index + 1, "driver": leader["code"] if leader else "—", "time": leader["sectors"][index] if leader else "—"}
+            )
 
         session_info = self.topics.get("SessionInfo", {})
         meeting_name = str((session_info.get("Meeting") or {}).get("Name") or "")
@@ -242,6 +300,12 @@ class LiveTimingService:
             },
             "trackStatus": {"code": str(track.get("Status") or ""), "message": track.get("Message") or "정보 없음"},
             "weather": self.topics.get("WeatherData", {}),
+            "fastestLap": {"driver": fastest_lap["code"], "time": fastest_lap["bestLap"]} if fastest_lap else None,
+            "fastestSectors": fastest_sectors,
+            "tyreInventory": {
+                "available": False,
+                "message": "공식 라이브 피드는 각 드라이버의 전체 잔여 타이어 세트 수를 제공하지 않습니다.",
+            },
             "drivers": rows,
             "raceControl": _items(race_control)[-20:][::-1],
             "teamRadio": radio_items,

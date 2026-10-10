@@ -15,9 +15,17 @@ def test_deep_merge_preserves_existing_timing_fields() -> None:
 def test_signalr_feed_is_normalized_to_live_timing_contract() -> None:
     service = LiveTimingService(Settings(app_use_sample_data=True))
     messages = [
-        ("DriverList", {"1": {"Tla": "TST", "FullName": "Test Driver", "TeamName": "Test Team", "TeamColour": "ff0000"}}),
-        ("TimingData", {"Lines": {"1": {"Position": "1", "GapToLeader": "", "IntervalToPositionAhead": {"Value": ""}, "LastLapTime": {"Value": "1:31.000"}, "BestLapTime": {"Value": "1:30.500"}}}}),
-        ("TimingAppData", {"Lines": {"1": {"Stints": {"0": {"Compound": "SOFT", "TotalLaps": 4}}}}}),
+        ("DriverList", {"1": {"Tla": "TST", "FullName": "Test Driver", "TeamName": "Test Team", "TeamColour": "ff0000"}, "2": {"Tla": "RIV", "FullName": "Rival Driver"}}),
+        ("TimingData", {"Lines": {
+            "1": {"Position": "1", "GapToLeader": "", "IntervalToPositionAhead": {"Value": ""}, "LastLapTime": {"Value": "1:31.000"}, "BestLapTime": {"Value": "1:30.500"}},
+            "2": {"Position": "2", "BestLapTime": {"Value": "1:31.200"}},
+        }}),
+        ("TimingStats", {"Lines": {
+            "1": {"BestSectors": {"0": {"Value": "30.100"}, "1": {"Value": "31.200"}, "2": {"Value": "29.200"}}},
+            "2": {"BestSectors": {"0": {"Value": "29.900"}, "1": {"Value": "31.500"}, "2": {"Value": "29.400"}}},
+        }}),
+        ("TimingAppData", {"Lines": {"1": {"Stints": {"0": {"Compound": "MEDIUM", "TotalLaps": 2, "New": "true"}, "1": {"Compound": "SOFT", "TotalLaps": 4, "New": "false"}}}}}),
+        ("CurrentTyres", {"Tyres": {"1": {"Compound": "SOFT", "New": "false"}}}),
         ("SessionInfo", {"Name": "Practice 1", "Meeting": {"Name": "Test Grand Prix"}}),
         ("LapCount", {"CurrentLap": 3, "TotalLaps": 61}),
     ]
@@ -30,6 +38,15 @@ def test_signalr_feed_is_normalized_to_live_timing_contract() -> None:
     assert snapshot["drivers"][0]["code"] == "TST"
     assert snapshot["drivers"][0]["compound"] == "SOFT"
     assert snapshot["drivers"][0]["tyreAge"] == 4
+    assert snapshot["drivers"][0]["stint"] == 2
+    assert snapshot["drivers"][0]["tyreHistory"][0] == {"compound": "MEDIUM", "laps": 2, "new": True}
+    assert snapshot["fastestLap"] == {"driver": "TST", "time": "1:30.500"}
+    assert snapshot["fastestSectors"] == [
+        {"sector": 1, "driver": "RIV", "time": "29.900"},
+        {"sector": 2, "driver": "TST", "time": "31.200"},
+        {"sector": 3, "driver": "TST", "time": "29.200"},
+    ]
+    assert snapshot["tyreInventory"]["available"] is False
 
 
 def test_non_feed_signalr_messages_are_ignored() -> None:
