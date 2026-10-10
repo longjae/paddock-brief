@@ -36,6 +36,27 @@ def test_non_feed_signalr_messages_are_ignored() -> None:
     assert service.topics == {}
 
 
+def test_signalr_subscription_result_seeds_full_session_state() -> None:
+    service = LiveTimingService(Settings(app_use_sample_data=True))
+    service.consume_signalr(
+        {
+            "type": 3,
+            "invocationId": "1",
+            "result": {
+                "DriverList": {"63": {"Tla": "RUS", "FullName": "George Russell"}},
+                "SessionInfo": {"Name": "Sprint", "Meeting": {"Name": "Singapore Grand Prix"}},
+                "TimingData": {"Lines": {"63": {"Position": "1"}}},
+                "LapCount": {"CurrentLap": 2, "TotalLaps": 19},
+            },
+        }
+    )
+
+    snapshot = service.snapshot("2026-singapore")
+    assert snapshot["isLive"] is True
+    assert snapshot["session"] == {"name": "Sprint", "meeting": "Singapore Grand Prix", "remaining": "—", "lap": 2, "totalLaps": 19}
+    assert snapshot["drivers"][0]["code"] == "RUS"
+
+
 def test_snapshot_does_not_mix_another_grand_prix() -> None:
     service = LiveTimingService(Settings(app_use_sample_data=True))
     service.topics = {

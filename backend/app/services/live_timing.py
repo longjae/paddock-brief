@@ -120,6 +120,15 @@ class LiveTimingService:
                 await asyncio.sleep(min(30, 2 ** min(attempt, 5)))
 
     def consume_signalr(self, message: dict[str, Any]) -> None:
+        if message.get("type") == 3:
+            result = message.get("result")
+            if isinstance(result, dict):
+                for topic in PUBLIC_TOPICS:
+                    if topic in result:
+                        self.topics[topic] = _deep_merge(self.topics.get(topic, {}), result[topic])
+                self.updated_at = datetime.now(UTC).isoformat()
+                self.connection = "live"
+            return
         if message.get("type") != 1 or str(message.get("target", "")).lower() != "feed":
             return
         arguments = message.get("arguments") or []
