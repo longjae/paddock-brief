@@ -12,10 +12,32 @@ function value(item: Record<string, string | number | boolean | null>, key: stri
   return item[key] === null || item[key] === undefined ? "" : String(item[key]);
 }
 
+function mergeRaceControl(
+  current: LiveTimingSnapshot["raceControl"],
+  incoming: LiveTimingSnapshot["raceControl"],
+): LiveTimingSnapshot["raceControl"] {
+  const messages = new Map<string, LiveTimingSnapshot["raceControl"][number]>();
+  for (const message of [...current, ...incoming]) {
+    const key = [value(message, "Utc"), value(message, "Message"), value(message, "Category"), value(message, "Flag")].join("|");
+    messages.set(key, message);
+  }
+  return Array.from(messages.values()).sort((a, b) => value(b, "Utc").localeCompare(value(a, "Utc"))).slice(0, 100);
+}
+
 export function LiveTiming({ event }: { event: EventDetail }) {
   const [snapshot, setSnapshot] = useState<LiveTimingSnapshot | null>(null);
   const [streamState, setStreamState] = useState<"opening" | "open" | "retrying">("opening");
   const [radioTranscripts, setRadioTranscripts] = useState<Record<string, RadioTranscript>>({});
+  const [raceControlHistory, setRaceControlHistory] = useState<LiveTimingSnapshot["raceControl"]>([]);
+
+  const acceptSnapshot = (state: LiveTimingSnapshot) => {
+    setSnapshot(state);
+    setRaceControlHistory((current) => {
+      const merged = mergeRaceControl(current, state.raceControl ?? []);
+      try { window.localStorage.setItem(`race-control:${event.slug}`, JSON.stringify(merged)); } catch { /* storage is optional */ }
+      return merged;
+    });
+  };
 
   const loadRadioTranscript = (path: string, sessionPath: string, audioUrl: string) => {
     if (!path || radioTranscripts[path]) return;
@@ -28,15 +50,19 @@ export function LiveTiming({ event }: { event: EventDetail }) {
 
   useEffect(() => {
     let active = true;
+    try {
+      const stored = window.localStorage.getItem(`race-control:${event.slug}`);
+      setRaceControlHistory(stored ? JSON.parse(stored) as LiveTimingSnapshot["raceControl"] : []);
+    } catch { setRaceControlHistory([]); }
     fetch(`${API_BASE}/events/${event.slug}/race-state`, { cache: "no-store" })
       .then((response) => { if (!response.ok) throw new Error("live state unavailable"); return response.json() as Promise<LiveTimingSnapshot>; })
-      .then((state) => active && setSnapshot(state))
+      .then((state) => active && acceptSnapshot(state))
       .catch(() => active && setStreamState("retrying"));
     const stream = new EventSource(`${API_BASE}/events/${event.slug}/live-stream`);
     stream.addEventListener("open", () => active && setStreamState("open"));
     stream.addEventListener("timing", (message) => {
       if (!active) return;
-      try { setSnapshot(JSON.parse((message as MessageEvent<string>).data) as LiveTimingSnapshot); setStreamState("open"); }
+      try { acceptSnapshot(JSON.parse((message as MessageEvent<string>).data) as LiveTimingSnapshot); setStreamState("open"); }
       catch { setStreamState("retrying"); }
     });
     stream.addEventListener("error", () => active && setStreamState("retrying"));
@@ -77,7 +103,7 @@ export function LiveTiming({ event }: { event: EventDetail }) {
         {snapshot?.drivers.map((driver) => <article className={`${driver.inPit ? "in-pit" : ""} ${driver.retired ? "retired" : ""}`} key={driver.number} style={{ "--driver-colour": driver.colour } as React.CSSProperties}><b>{driver.position}</b><div><i /><strong>{driver.code}</strong><small>{driver.team}</small></div><span className={`live-compound ${driver.compound.toLowerCase()}`}>{driver.compound.slice(0, 1)}<small>{driver.tyreAge}L</small></span><time>{driver.lastLap}</time><time>{driver.bestLap}</time><em>{driver.inPit ? "PIT" : driver.interval}</em><em>{driver.retired ? "OUT" : driver.gap}</em></article>)}
       </div></section>
       <aside className="live-side-column">
-        <section className="panel live-feed-panel"><header><div><p className="eyebrow">RACE CONTROL</p><h3>레이스 컨트롤</h3></div></header><div className="live-message-list">{!snapshot?.raceControl.length && <p className="empty-state">공식 메시지를 기다리고 있습니다.</p>}{snapshot?.raceControl.map((message, index) => <article key={`${value(message, "Utc")}-${index}`}><time>{value(message, "Utc").slice(11, 19) || "—"}</time><p>{value(message, "Message") || value(message, "Category")}</p></article>)}</div></section>
+        <section className="panel live-feed-panel"><header><div><p className="eyebrow">RACE CONTROL</p><h3>레이스 컨트롤</h3></div><span>{raceControlHistory.length} MESSAGES</span></header><div className="live-message-list">{!raceControlHistory.length && <p className="empty-state">공식 메시지를 기다리고 있습니다.</p>}{raceControlHistory.map((message, index) => <article key={`${value(message, "Utc")}-${value(message, "Message")}-${index}`}><time>{value(message, "Utc").slice(11, 19) || "—"}</time><p>{value(message, "Message") || value(message, "Category")}</p></article>)}</div></section>
         <section className="panel live-feed-panel"><header><div><p className="eyebrow">TEAM RADIO</p><h3>팀 라디오</h3></div></header><div className="live-message-list radio-list">{!snapshot?.teamRadio.length && <p className="empty-state">공개된 팀 라디오를 기다리고 있습니다.</p>}{snapshot?.teamRadio.map((radio, index) => {
           const path = value(radio, "Path");
           const sessionPath = value(radio, "SessionPath");
