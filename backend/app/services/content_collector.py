@@ -47,10 +47,32 @@ class MediaFeedSource:
     feed_url: str
 
 
+@dataclass(frozen=True, slots=True)
+class YouTubeSource:
+    code: str
+    name: str
+    handle: str
+    team_code: str | None = None
+    channel_id: str | None = None
+
+
 MEDIA_FEED_SOURCES = (
     MediaFeedSource("bbc-sport-f1", "BBC Sport F1", "https://www.bbc.com/sport/formula1", "https://feeds.bbci.co.uk/sport/formula1/rss.xml"),
     MediaFeedSource("racefans", "RaceFans", "https://www.racefans.net/", "https://www.racefans.net/feed/"),
     MediaFeedSource("sky-sports-f1", "Sky Sports F1", "https://www.skysports.com/f1", "https://www.skysports.com/rss/12040"),
+)
+
+
+YOUTUBE_SOURCES = (
+    YouTubeSource("formula1-youtube", "Formula 1", "Formula1", None, "UC_BaxRhNREI_V0DVXjXDALA"),
+    YouTubeSource("fia-youtube", "FIA", "fiaofficialvideo", None, "UCFSkxZVj6ki9RrWC8ZcCPrQ"),
+    YouTubeSource("mclaren-youtube", "McLaren Racing", "McLaren", "mclaren", "UC8dxVgZl9u5HeCOXnosCtuQ"),
+    YouTubeSource("mercedes-youtube", "Mercedes-AMG PETRONAS F1 Team", "MercedesAMGF1", "mercedes", "UC7_VGkwCoKfqh1eZEkzey3A"),
+)
+
+YOUTUBE_INTERVIEW_TERMS = (
+    "interview", "reaction", "reacts", "press conference", "media day", "debrief",
+    "post-race", "post race", "post-qualifying", "post qualifying", "speaks", "q&a",
 )
 
 
@@ -112,6 +134,16 @@ class SourceDocument:
     @property
     def fingerprint(self) -> str:
         return hashlib.sha256(f"{self.url}\n{self.title}\n{self.body}".encode()).hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
+class YouTubeVideo:
+    video_id: str
+    title: str
+    description: str
+    channel_name: str
+    published_at: str | None
+    source: YouTubeSource
 
 
 @dataclass(slots=True)
@@ -186,6 +218,32 @@ def canonicalize_web_url(url: str, base_url: str) -> str:
     if hostname.startswith("www."):
         hostname = hostname[4:]
     return urlunparse(("https", hostname, parsed.path.rstrip("/") or "/", "", "", ""))
+
+
+def youtube_video_matches_event(video: YouTubeVideo, event: dict[str, Any]) -> bool:
+    text = f"{video.title} {video.description}".lower()
+    event_terms = {
+        str(event.get("country") or "").lower(),
+        str(event.get("locality") or "").lower(),
+        str(event.get("circuit_name") or "").lower(),
+        str(event.get("short_name") or "").lower().replace(" grand prix", ""),
+    }
+    event_terms.discard("")
+    event_match = any(term in text for term in event_terms)
+    interview_match = any(term in text for term in YOUTUBE_INTERVIEW_TERMS)
+    return event_match and interview_match
+
+
+def youtube_video_participants(video: YouTubeVideo, drivers: list[dict[str, Any]]) -> list[str]:
+    text = f"{video.title} {video.description}".casefold()
+    participants = [
+        str(driver["full_name"])
+        for driver in drivers
+        if str(driver.get("full_name") or "").casefold() in text
+    ]
+    if video.source.team_code and video.source.name not in participants:
+        participants.append(video.source.name)
+    return participants
 
 
 def discover_article_urls(page_html: str) -> set[str]:
@@ -492,11 +550,13 @@ class Formula1ContentCollector:
         database: Client,
         summarizer: OpenAISummarizer,
         user_agent: str,
+        youtube_api_key: str | None = None,
         transcript_api_key: str | None = None,
         http_client: httpx.Client | None = None,
     ) -> None:
         self.database = database
         self.summarizer = summarizer
+        self.youtube_api_key = youtube_api_key
         self.transcript_api_key = transcript_api_key
         self.http = http_client or httpx.Client(
             transport=httpx.HTTPTransport(retries=2),
@@ -527,6 +587,153 @@ class Formula1ContentCollector:
         if not created:
             raise RuntimeError(f"source {code} could not be created")
         return str(created[0]["id"])
+
+    def youtube_api_get(self, resource: str, params: dict[str, str | int]) -> dict[str, Any]:
+        if not self.youtube_api_key:
+            raise ValueError("YOUTUBE_API_KEY is not configured")
+        response = self.http.get(
+            f"https://www.googleapis.com/youtube/v3/{resource}",
+            params={**params, "key": self.youtube_api_key},
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError("YouTube Data API returned an invalid response")
+        return payload
+
+    def discover_youtube_uploads(self, source: YouTubeSource, max_results: int = 25) -> list[YouTubeVideo]:
+        feed_error: Exception | None = None
+        if source.channel_id:
+            try:
+                return self.discover_youtube_feed_uploads(source, max_results)
+            except Exception as exc:
+                feed_error = exc
+                if not self.youtube_api_key:
+                    raise
+        if not self.youtube_api_key and feed_error:
+            raise feed_error
+        channel_selector = {"id": source.channel_id} if source.channel_id else {"forHandle": source.handle}
+        channel_payload = self.youtube_api_get(
+            "channels",
+            {"part": "contentDetails", **channel_selector, "maxResults": 1},
+        )
+        channel_items = channel_payload.get("items") or []
+        if not channel_items:
+            raise ValueError(f"YouTube channel was not found for @{source.handle}")
+        uploads_id = (
+            channel_items[0].get("contentDetails", {})
+            .get("relatedPlaylists", {})
+            .get("uploads")
+        )
+        if not uploads_id:
+            raise ValueError(f"YouTube uploads playlist was missing for @{source.handle}")
+        playlist_payload = self.youtube_api_get(
+            "playlistItems",
+            {"part": "snippet,contentDetails", "playlistId": str(uploads_id), "maxResults": max_results},
+        )
+        videos: list[YouTubeVideo] = []
+        for item in playlist_payload.get("items") or []:
+            snippet = item.get("snippet") or {}
+            content_details = item.get("contentDetails") or {}
+            video_id = str(content_details.get("videoId") or snippet.get("resourceId", {}).get("videoId") or "")
+            if not YOUTUBE_ID_RE.fullmatch(video_id):
+                continue
+            videos.append(
+                YouTubeVideo(
+                    video_id=video_id,
+                    title=html.unescape(str(snippet.get("title") or "Untitled video")),
+                    description=html.unescape(str(snippet.get("description") or "")),
+                    channel_name=str(snippet.get("videoOwnerChannelTitle") or snippet.get("channelTitle") or source.name),
+                    published_at=str(content_details.get("videoPublishedAt") or snippet.get("publishedAt") or "") or None,
+                    source=source,
+                )
+            )
+        return videos
+
+    def discover_youtube_feed_uploads(self, source: YouTubeSource, max_results: int = 25) -> list[YouTubeVideo]:
+        if not source.channel_id:
+            raise ValueError(f"YouTube channel ID is missing for @{source.handle}")
+        payload = self.fetch(f"https://www.youtube.com/feeds/videos.xml?channel_id={source.channel_id}")
+        root = ElementTree.fromstring(payload)
+        atom = "{http://www.w3.org/2005/Atom}"
+        media = "{http://search.yahoo.com/mrss/}"
+        yt = "{http://www.youtube.com/xml/schemas/2015}"
+        videos: list[YouTubeVideo] = []
+        for entry in root.findall(f"{atom}entry")[:max_results]:
+            video_id = str(entry.findtext(f"{yt}videoId") or "")
+            if not YOUTUBE_ID_RE.fullmatch(video_id):
+                continue
+            group = entry.find(f"{media}group")
+            description = group.findtext(f"{media}description") if group is not None else ""
+            videos.append(
+                YouTubeVideo(
+                    video_id=video_id,
+                    title=html.unescape(str(entry.findtext(f"{atom}title") or "Untitled video")),
+                    description=html.unescape(str(description or "")),
+                    channel_name=str(entry.findtext(f"{atom}author/{atom}name") or source.name),
+                    published_at=str(entry.findtext(f"{atom}published") or "") or None,
+                    source=source,
+                )
+            )
+        return videos
+
+    def collect_youtube_videos(
+        self,
+        event: dict[str, Any],
+        drivers: list[dict[str, Any]],
+        *,
+        dry_run: bool,
+        review_status: str,
+    ) -> tuple[int, int, list[str]]:
+        inserted = 0
+        failed = 0
+        errors: list[str] = []
+        existing_video_ids = {
+            str(row.get("external_id") or "")
+            for row in self.database.table("videos").select("external_id").eq("event_id", event["id"]).eq("platform", "youtube").execute().data
+        } if self.database is not None else set()
+        for source in YOUTUBE_SOURCES:
+            try:
+                videos = self.discover_youtube_uploads(source)
+                source_id = ""
+                if not dry_run:
+                    source_id = self.ensure_source(
+                        source.code,
+                        source.name,
+                        f"https://www.youtube.com/@{source.handle}",
+                        "video",
+                        is_official=True,
+                    )
+                for video in videos:
+                    if not youtube_video_matches_event(video, event):
+                        continue
+                    if video.video_id in existing_video_ids:
+                        continue
+                    inserted += 1
+                    if dry_run:
+                        continue
+                    self.database.table("videos").upsert(
+                        {
+                            "event_id": event["id"],
+                            "source_id": source_id,
+                            "platform": "youtube",
+                            "external_id": video.video_id,
+                            "category": "공식 인터뷰 영상",
+                            "title": video.title,
+                            "channel_name": video.channel_name,
+                            "source_url": f"https://www.youtube.com/watch?v={video.video_id}",
+                            "participants": youtube_video_participants(video, drivers),
+                            "published_at": video.published_at,
+                            "is_embeddable": True,
+                            "review_status": review_status,
+                        },
+                        on_conflict="platform,external_id",
+                    ).execute()
+                    existing_video_ids.add(video.video_id)
+            except Exception as exc:
+                failed += 1
+                errors.append(f"youtube @{source.handle}: {type(exc).__name__}: {exc}")
+        return inserted, failed, errors
 
     @staticmethod
     def fetch_youtube_transcript(video_id: str) -> tuple[str, str]:
@@ -644,6 +851,7 @@ class Formula1ContentCollector:
                             "title": summary.title_ko,
                             "korean_summary": summary.summary_ko,
                             "korean_detail": summary.detail,
+                            "participants": summary.participants,
                             "transcript_language": language,
                             "transcript_status": "ready",
                             "summarized_at": datetime.now(timezone.utc).isoformat(),
@@ -778,6 +986,17 @@ class Formula1ContentCollector:
         source_id = source_rows[0]["id"]
         teams = self.database.table("teams").select("id,code,name").execute().data
         drivers = self.database.table("drivers").select("code,full_name").execute().data
+
+        youtube_found, youtube_failed, youtube_errors = self.collect_youtube_videos(
+            event,
+            drivers,
+            dry_run=dry_run,
+            review_status=review_status,
+        )
+        result.discovered += youtube_found
+        result.inserted += youtube_found
+        result.failed += youtube_failed
+        result.errors.extend(youtube_errors)
 
         if fia_urls:
             fia_source_id = self.ensure_source(

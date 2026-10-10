@@ -7,6 +7,9 @@ from app.services.content_collector import (
     KoreanArticleSummary,
     Formula1ContentCollector,
     TEAM_EDITORIAL_SOURCES,
+    YOUTUBE_SOURCES,
+    YouTubeSource,
+    YouTubeVideo,
     canonicalize_url,
     canonicalize_web_url,
     discover_article_urls,
@@ -22,6 +25,8 @@ from app.services.content_collector import (
     parse_youtube_subtitle,
     team_document_matches_event,
     url_may_match_event,
+    youtube_video_matches_event,
+    youtube_video_participants,
 )
 
 
@@ -88,6 +93,70 @@ def test_transcript_fallback_reaches_external_provider_after_free_providers_fail
 
     assert collector.fetch_youtube_transcript_with_fallback("SQYus-yb4xE") == ("Paddock interview transcript", "en")
     assert attempts == ["youtube-transcript-api", "yt-dlp", "transcript-api"]
+
+
+def test_discovers_recent_uploads_from_official_youtube_channel() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.params["key"] == "youtube-key"
+        if request.url.path.endswith("/channels"):
+            assert request.url.params["forHandle"] == "Formula1"
+            return httpx.Response(200, json={"items": [{"contentDetails": {"relatedPlaylists": {"uploads": "UU_FORMULA1"}}}]})
+        assert request.url.path.endswith("/playlistItems")
+        assert request.url.params["playlistId"] == "UU_FORMULA1"
+        return httpx.Response(200, json={"items": [{
+            "snippet": {
+                "title": "Lando Norris reacts after the Singapore Grand Prix",
+                "description": "An interview with Lando Norris at Marina Bay.",
+                "channelTitle": "Formula 1",
+                "publishedAt": "2026-10-10T10:00:00Z",
+                "resourceId": {"videoId": "SQYus-yb4xE"},
+            },
+            "contentDetails": {"videoId": "SQYus-yb4xE", "videoPublishedAt": "2026-10-10T10:00:00Z"},
+        }]})
+
+    collector = Formula1ContentCollector(
+        database=None,  # type: ignore[arg-type]
+        summarizer=None,  # type: ignore[arg-type]
+        user_agent="test",
+        youtube_api_key="youtube-key",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    videos = collector.discover_youtube_uploads(YouTubeSource("formula1-test", "Formula 1", "Formula1"))
+    assert len(videos) == 1
+    assert videos[0].video_id == "SQYus-yb4xE"
+    event = {"country": "Singapore", "locality": "Singapore", "circuit_name": "Marina Bay Street Circuit", "short_name": "Singapore Grand Prix"}
+    assert youtube_video_matches_event(videos[0], event)
+    assert youtube_video_participants(videos[0], [{"full_name": "Lando Norris"}]) == ["Lando Norris"]
+
+
+def test_discovers_youtube_uploads_from_free_channel_feed() -> None:
+    payload = '''<?xml version="1.0" encoding="UTF-8"?>
+    <feed xmlns:yt="http://www.youtube.com/xml/schemas/2015" xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">
+      <entry><yt:videoId>9iGoWdrKu6o</yt:videoId><title>Drivers React After Sprint Qualifying | 2026 Singapore Grand Prix</title>
+      <author><name>FORMULA 1</name></author><published>2026-10-09T17:30:14+00:00</published>
+      <media:group><media:description>Interviews from Marina Bay.</media:description></media:group></entry>
+    </feed>'''
+    collector = Formula1ContentCollector(
+        database=None,  # type: ignore[arg-type]
+        summarizer=None,  # type: ignore[arg-type]
+        user_agent="test",
+        http_client=httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, text=payload))),
+    )
+    videos = collector.discover_youtube_uploads(YOUTUBE_SOURCES[0])
+    assert [(video.video_id, video.channel_name) for video in videos] == [("9iGoWdrKu6o", "FORMULA 1")]
+
+
+def test_youtube_discovery_rejects_non_interview_race_video() -> None:
+    video = YouTubeVideo(
+        video_id="SQYus-yb4xE",
+        title="Singapore Grand Prix race highlights",
+        description="The best action from Marina Bay.",
+        channel_name="Formula 1",
+        published_at="2026-10-10T10:00:00Z",
+        source=YOUTUBE_SOURCES[0],
+    )
+    event = {"country": "Singapore", "locality": "Singapore", "circuit_name": "Marina Bay Street Circuit", "short_name": "Singapore Grand Prix"}
+    assert not youtube_video_matches_event(video, event)
 
 
 def test_discovers_only_formula1_articles_and_videos() -> None:

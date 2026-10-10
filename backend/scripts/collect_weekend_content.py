@@ -48,6 +48,7 @@ def main() -> int:
         database=database,
         summarizer=OpenAISummarizer(settings.openai_api_key or "", settings.openai_summary_model),
         user_agent=settings.collector_user_agent,
+        youtube_api_key=settings.youtube_api_key,
         transcript_api_key=settings.transcript_api_key,
     )
     events = list(active_events(database, datetime.now(timezone.utc), args.event_slug, args.force))
