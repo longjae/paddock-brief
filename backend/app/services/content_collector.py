@@ -703,8 +703,7 @@ class Formula1ContentCollector:
         for source in MEDIA_FEED_SOURCES:
             try:
                 for url in discover_feed_article_urls(self.fetch(source.feed_url), source):
-                    if url_may_match_event(url, event):
-                        media_urls[url] = source
+                    media_urls[url] = source
             except Exception as exc:
                 result.failed += 1
                 result.errors.append(f"discover {source.feed_url}: {exc}")

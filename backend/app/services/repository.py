@@ -115,6 +115,7 @@ class EventRepository:
                 "detailedSummary": video.get("korean_detail"),
                 "transcriptStatus": video.get("transcript_status") or "pending",
                 "transcriptLanguage": video.get("transcript_language"),
+                "publishedAt": str(video.get("published_at") or video.get("collected_at")) if video.get("published_at") or video.get("collected_at") else None,
             }
             for video in video_rows
         ]
@@ -125,14 +126,12 @@ class EventRepository:
         )
         team_content_rows = sorted(
             row.get("team_content") or [],
-            key=lambda item: (
-                (item.get("teams") or {}).get("sort_order", 99),
-                item.get("published_at") or "",
-            ),
+            key=lambda item: item.get("published_at") or item.get("collected_at") or "",
+            reverse=True,
         )
         news_rows = sorted(
             row.get("event_news") or [],
-            key=lambda item: item.get("published_at") or "",
+            key=lambda item: item.get("published_at") or item.get("collected_at") or "",
             reverse=True,
         )
         event_driver_rows = sorted(
@@ -182,7 +181,7 @@ class EventRepository:
                         "summary": item["korean_summary"],
                         "detailedSummary": item.get("korean_detail") or item["korean_summary"],
                         "participants": item.get("participants") or [],
-                        "publishedAt": str(item["published_at"]) if item.get("published_at") else None,
+                        "publishedAt": str(item.get("published_at") or item.get("collected_at")) if item.get("published_at") or item.get("collected_at") else None,
                         "contentType": item["content_kind"],
                     }
                     for item in team_content_rows
@@ -200,7 +199,7 @@ class EventRepository:
                         "tags": item.get("tags") or [],
                         "teamCodes": item.get("team_codes") or [],
                         "driverCodes": item.get("driver_codes") or [],
-                        "publishedAt": str(item["published_at"]) if item.get("published_at") else None,
+                        "publishedAt": str(item.get("published_at") or item.get("collected_at")) if item.get("published_at") or item.get("collected_at") else None,
                         "isPaywalled": item.get("is_paywalled", False),
                     }
                     for item in news_rows

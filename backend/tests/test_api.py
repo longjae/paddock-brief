@@ -90,6 +90,16 @@ def test_unknown_event_returns_404() -> None:
     assert response.status_code == 404
 
 
+def test_race_state_exposes_live_connection_contract() -> None:
+    response = client.get("/api/v1/events/2026-singapore/race-state")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["event"] == "2026-singapore"
+    assert payload["connection"] == "disabled"
+    assert payload["isLive"] is False
+    assert "raceControl" in payload
+
+
 def test_supabase_rows_are_normalized_to_frontend_contract() -> None:
     event = EventRepository._normalize(
         {

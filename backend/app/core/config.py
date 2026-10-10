@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     transcript_api_key: str | None = None
     openai_api_key: str | None = None
     openai_summary_model: str = "gpt-6-luna"
+    live_timing_enabled: bool = False
+    live_timing_url: str = "wss://livetiming.formula1.com/signalrcore"
+    f1_live_token: str | None = None
     collector_user_agent: str = "PaddockBrief/1.0 (+personal F1 reader)"
     api_prefix: str = Field(default="/api/v1")
 

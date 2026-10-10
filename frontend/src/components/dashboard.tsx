@@ -3,11 +3,12 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { demoEvent } from "@/lib/mock-data";
 import { F1_GLOSSARY, GLOSSARY_CATEGORIES } from "@/lib/glossary";
 import type { GlossaryCategory } from "@/lib/glossary";
 import type { ChampionshipSnapshot, EventDetail, EventSummary, NewsArticle, TeamContent, Video } from "@/lib/types";
+import { LiveTiming } from "@/components/live-timing";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 
@@ -24,7 +25,7 @@ type ModalContent = {
   detailLabel: string;
 };
 
-export type MainSection = "weekend" | "interviews" | "championship" | "race-centre" | "glossary";
+export type MainSection = "weekend" | "interviews" | "championship" | "live" | "race-centre" | "glossary";
 export type InterviewSection = "press" | "teams" | "drivers" | "videos" | "media";
 type WeekendDay = "금요일" | "토요일" | "일요일";
 
@@ -66,8 +67,40 @@ const TEAM_LOGO_SLUGS: Record<string, string> = {
   cadillac: "cadillac",
 };
 
+const DRIVER_NUMBERS: Record<string, number> = {
+  ANT: 12, RUS: 63, HAM: 44, LEC: 16, NOR: 4, PIA: 81, VER: 1, HAD: 6,
+  LAW: 30, LIN: 41, GAS: 10, COL: 43, BEA: 87, OCO: 31, BOR: 5, HUL: 27,
+  ALO: 14, STR: 18, SAI: 55, ALB: 23, TSU: 22, BOT: 77, PER: 11,
+};
+
+const DRIVER_ALIASES: Record<string, string[]> = {
+  ANT: ["키미 안토넬리", "안드레아 키미 안토넬리", "안토넬리"], RUS: ["조지 러셀", "러셀"],
+  HAM: ["루이스 해밀턴", "해밀턴"], LEC: ["샤를 르클레르", "르클레르"],
+  NOR: ["랜도 노리스", "노리스"], PIA: ["오스카 피아스트리", "피아스트리"],
+  VER: ["막스 베르스타펜", "막스 페르스타펜", "베르스타펜", "페르스타펜"], HAD: ["이삭 하지르", "아이작 하자르", "하지르", "하자르"],
+  LAW: ["리암 로슨", "로슨"], LIN: ["아비드 린드블라드", "린드블라드"], GAS: ["피에르 가슬리", "가슬리"],
+  COL: ["프랑코 콜라핀토", "콜라핀토"], BEA: ["올리버 베어먼", "베어먼"], OCO: ["에스테반 오콘", "오콘"],
+  BOR: ["가브리엘 보르톨레토", "보르톨레토"], HUL: ["니코 휠켄베르크", "휠켄베르크"],
+  ALO: ["페르난도 알론소", "알론소"], STR: ["랜스 스트롤", "스트롤"], SAI: ["카를로스 사인츠", "사인츠"],
+  ALB: ["알렉산더 알본", "알본"], TSU: ["유키 츠노다", "츠노다"], BOT: ["발테리 보타스", "보타스"],
+  PER: ["세르히오 페레스", "페레스"],
+};
+
 function normalizedIdentity(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "").replace(/^rb$/, "racingbulls");
+}
+
+function normalizedPerson(value: string): string {
+  return value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+}
+
+function mentionsDriver(participants: string[], driver: EventDetail["eventDrivers"][number]): boolean {
+  const familyName = driver.name.split(" ").at(-1) ?? driver.name;
+  const aliases = [driver.name, familyName, ...(DRIVER_ALIASES[driver.code] ?? [])].map(normalizedPerson);
+  return participants.some((participant) => {
+    const candidate = normalizedPerson(participant);
+    return aliases.some((alias) => alias.length >= 3 && (candidate === alias || candidate.includes(alias)));
+  });
 }
 
 function standingTeamColour(teamCode: string, teamName: string): string {
@@ -118,9 +151,19 @@ function publishedDay(value?: string | null): string {
   }).format(date);
 }
 
+function publishedTime(value?: string | null): number {
+  if (!value) return Number.NEGATIVE_INFINITY;
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time;
+}
+
+function newestFirst<T extends { publishedAt?: string | null }>(items: T[]): T[] {
+  return items.toSorted((left, right) => publishedTime(right.publishedAt) - publishedTime(left.publishedAt));
+}
+
 function groupByPublishedDay<T extends { publishedAt?: string | null }>(items: T[]): Array<[string, T[]]> {
   const groups = new Map<string, T[]>();
-  items.toSorted((left, right) => (right.publishedAt ?? "").localeCompare(left.publishedAt ?? "")).forEach((item) => {
+  newestFirst(items).forEach((item) => {
     const key = publishedDay(item.publishedAt);
     groups.set(key, [...(groups.get(key) ?? []), item]);
   });
@@ -254,6 +297,8 @@ export function Dashboard({
   const [championshipLoading, setChampionshipLoading] = useState(true);
   const [glossaryQuery, setGlossaryQuery] = useState("");
   const [glossaryCategory, setGlossaryCategory] = useState<"전체" | GlossaryCategory>("전체");
+  const teamStripRef = useRef<HTMLDivElement>(null);
+  const paddockSelectionChangedRef = useRef(false);
 
   useEffect(() => {
     setCurrentTime(Date.now());
@@ -263,6 +308,8 @@ export function Dashboard({
 
   useEffect(() => {
     setInterviewSection(initialInterviewSection);
+    if (initialInterviewSection === "drivers") setPaddockView("driver");
+    if (initialInterviewSection === "teams") setPaddockView("team");
   }, [initialInterviewSection]);
 
   useEffect(() => {
@@ -296,10 +343,10 @@ export function Dashboard({
         setEvent(featured);
         setEvents(calendar);
         setActiveVideo(featured.videos[0]?.id);
-        setActiveTeam(featured.eventDrivers[0]?.teamCode ?? featured.teamContent[0]?.teamCode ?? null);
+        setActiveTeam(null);
         setActiveOutlet("all");
         setActiveDriver(null);
-        setPaddockView("team");
+        paddockSelectionChangedRef.current = false;
         setSource("api");
       })
       .catch(() => setSource("sample"))
@@ -318,12 +365,34 @@ export function Dashboard({
   const teams = useMemo(() => {
     const seen = new Map<string, { code: string; name: string; colour: string; drivers: EventDetail["eventDrivers"] }>();
     event.eventDrivers.forEach((driver) => {
-      const current = seen.get(driver.teamCode) ?? { code: driver.teamCode, name: driver.team, colour: driver.colour, drivers: [] };
+      const identity = normalizedIdentity(driver.teamCode || driver.team);
+      const current = seen.get(identity) ?? { code: driver.teamCode, name: driver.team, colour: driver.colour, drivers: [] };
       current.drivers.push(driver);
-      seen.set(driver.teamCode, current);
+      seen.set(identity, current);
     });
     event.teamContent.forEach((item) => {
-      if (!seen.has(item.teamCode)) seen.set(item.teamCode, { code: item.teamCode, name: item.team, colour: item.colour, drivers: [] });
+      const identity = normalizedIdentity(item.teamCode || item.team);
+      if (!seen.has(identity)) seen.set(identity, { code: item.teamCode, name: item.team, colour: item.colour, drivers: [] });
+    });
+    championship?.drivers.forEach((standing) => {
+      const identity = normalizedIdentity(standing.teamCode || standing.team);
+      const current = seen.get(identity) ?? { code: standing.teamCode, name: standing.team, colour: standingTeamColour(standing.teamCode, standing.team), drivers: [] };
+      if (!current.drivers.some((driver) => driver.code === standing.code)) current.drivers.push({
+        id: `${event.slug}-${standing.code}`,
+        code: standing.code,
+        name: standing.name,
+        number: DRIVER_NUMBERS[standing.code] ?? 0,
+        nationality: "",
+        profileUrl: null,
+        team: current.name,
+        teamCode: current.code,
+        colour: current.colour,
+        resultPosition: null,
+        resultStatus: "entered",
+        points: 0,
+        previousSeasonRank: standing.position,
+      });
+      seen.set(identity, current);
     });
     const constructorPositions = new Map<string, number>();
     championship?.constructors.forEach((standing) => {
@@ -345,15 +414,58 @@ export function Dashboard({
         return leftPosition - rightPosition || left.name.localeCompare(right.name);
       });
   }, [championship, event.eventDrivers, event.teamContent]);
-  const visibleTeamContent = activeTeam ? event.teamContent.filter((item) => item.teamCode === activeTeam) : [];
+
+  useEffect(() => {
+    if (championshipLoading || teams.length === 0) return;
+    const teamExists = teams.some((team) => team.code === activeTeam);
+    if (!paddockSelectionChangedRef.current || !teamExists) setActiveTeam(teams[0].code);
+  }, [activeTeam, championshipLoading, teams]);
+
+  useEffect(() => {
+    const strip = teamStripRef.current;
+    if (!strip || !activeTeam || teams.length === 0) return;
+    const frame = window.requestAnimationFrame(() => {
+      if (activeTeam === teams[0].code) {
+        strip.scrollTo({ left: 0, behavior: "auto" });
+        return;
+      }
+      strip.querySelector<HTMLElement>(`[data-team-code="${CSS.escape(activeTeam)}"]`)?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeTeam, teams]);
+
+  useEffect(() => {
+    if (interviewSection !== "drivers" || teams.length === 0) return;
+    const activeTeamEntry = teams.find((team) => team.code === activeTeam) ?? teams[0];
+    if (!activeTeamEntry.drivers.some((driver) => driver.code === activeDriver)) setActiveDriver(activeTeamEntry.drivers[0]?.code ?? null);
+  }, [activeDriver, activeTeam, interviewSection, teams]);
+  const visibleTeamContent = newestFirst(activeTeam ? event.teamContent.filter((item) => item.teamCode === activeTeam) : []);
   const categoryLabel = (kind: string) => ({ interview: "미디어 인터뷰", "team-report": "팀 코멘트", video: "팀 영상", social: "소셜" }[kind] ?? kind);
   const outlets = useMemo(() => [...new Set(event.news.map((article) => article.outlet))], [event.news]);
-  const visibleNews = activeOutlet === "all" ? event.news : event.news.filter((article) => article.outlet === activeOutlet);
+  const visibleNews = newestFirst(activeOutlet === "all" ? event.news : event.news.filter((article) => article.outlet === activeOutlet));
   const newsCategoryLabel = (kind: string) => ({ "race-report": "레이스 리포트", analysis: "분석", interview: "인터뷰", feature: "기획", preview: "프리뷰", results: "결과" }[kind] ?? kind);
-  const selectedDriver = event.eventDrivers.find((driver) => driver.code === activeDriver);
-  const driverTeamContent = selectedDriver ? event.teamContent.filter((item) => item.participants.includes(selectedDriver.name)) : [];
-  const driverNews = selectedDriver ? event.news.filter((article) => article.driverCodes.includes(selectedDriver.code)) : [];
-  const driverVideos = selectedDriver ? event.videos.filter((video) => video.participants.includes(selectedDriver.name)) : [];
+  const selectedDriver = teams.flatMap((team) => team.drivers).find((driver) => driver.code === activeDriver);
+  const driverContent = selectedDriver ? event.teamContent.filter((item) => mentionsDriver(item.participants, selectedDriver)) : [];
+  const driverInterviewContent = newestFirst(selectedDriver ? driverContent.filter((item) =>
+    item.contentType === "interview" && (mentionsDriver([item.title], selectedDriver) || mentionsDriver(item.participants.slice(0, 1), selectedDriver))
+  ) : []);
+  const driverInterviewUrls = new Set(driverInterviewContent.map((item) => item.url));
+  const driverInterviewNews = newestFirst(selectedDriver ? event.news.filter((article) =>
+    article.category === "interview" &&
+    article.driverCodes.includes(selectedDriver.code) &&
+    mentionsDriver([article.title, ...article.tags], selectedDriver) &&
+    !driverInterviewUrls.has(article.url)
+  ) : []);
+  const driverInterviewItems = newestFirst([
+    ...driverInterviewContent.map((item) => ({ kind: "team" as const, item, publishedAt: item.publishedAt })),
+    ...driverInterviewNews.map((item) => ({ kind: "news" as const, item, publishedAt: item.publishedAt })),
+  ]);
+  const driverTeamContent = newestFirst(driverContent.filter((item) => item.contentType !== "interview"));
+  const driverNews = newestFirst(selectedDriver ? event.news.filter((article) =>
+    article.category !== "interview" && article.driverCodes.includes(selectedDriver.code) && mentionsDriver([article.title, ...article.tags], selectedDriver)
+  ) : []);
+  const sortedVideos = newestFirst(event.videos);
+  const driverVideos = selectedDriver ? sortedVideos.filter((video) => video.participants.includes(selectedDriver.name)) : [];
   const pressConferenceNews = event.news.filter((article) =>
     article.tags.some((tag) => tag.includes("기자회견")) || article.title.includes("기자회견") || article.title.includes("프레스 컨퍼런스")
   );
@@ -362,6 +474,7 @@ export function Dashboard({
   const teamContentByDate = groupByPublishedDay(visibleTeamContent);
   const driverNewsByDate = groupByPublishedDay(driverNews);
   const driverTeamContentByDate = groupByPublishedDay(driverTeamContent);
+  const driverInterviewItemsByDate = groupByPublishedDay(driverInterviewItems);
   const raceDaySessions = event.sessions.filter((session) => sessionDay(session) === raceDay);
   const officialRaceHub = `https://www.formula1.com/en/racing/${event.season}/${event.slug.replace(`${event.season}-`, "")}`;
   const visibleGlossary = useMemo(() => {
@@ -395,6 +508,7 @@ export function Dashboard({
           <Link className={activeSection === "weekend" ? "active" : ""} href={pageHref("weekend", event.slug)}>Weekend</Link>
           <Link className={activeSection === "interviews" ? "active" : ""} href={pageHref("interviews", event.slug, interviewSection)}>Interviews</Link>
           <Link className={activeSection === "championship" ? "active" : ""} href={pageHref("championship", event.slug)}>Championship</Link>
+          <Link className={activeSection === "live" ? "active" : ""} href={pageHref("live", event.slug)}>Live</Link>
           <Link className={activeSection === "race-centre" ? "active" : ""} href={pageHref("race-centre", event.slug)}>Race centre</Link>
           <Link className={activeSection === "glossary" ? "active" : ""} href={pageHref("glossary", event.slug)}>F1 용어집</Link>
         </nav>
@@ -545,7 +659,7 @@ export function Dashboard({
           </div>
 
           <div className="video-list">
-            {event.videos.map((video) => (
+            {sortedVideos.map((video) => (
               <button className={video.id === activeVideo ? "selected" : ""} key={video.id} onClick={() => setActiveVideo(video.id)} type="button">
                 <span className="mini-play">▶</span>
                 <span><small>{video.category}</small><b>{video.title}</b><em>{video.source} · {video.duration}</em></span>
@@ -561,15 +675,15 @@ export function Dashboard({
                 <span>{championship?.basisLabel ?? "STANDINGS ORDER"}</span>
               </div>
               <p className="paddock-guide">팀 이름을 누르면 팀 인터뷰를, 선수 코드를 누르면 해당 선수의 결과와 관련 자료를 보여줍니다.</p>
-              <div className="paddock-team-strip" aria-label={`${championship?.basisLabel ?? "직전 시즌 순위"} 기준 팀과 선수 선택`}>
+              <div className="paddock-team-strip" aria-label={`${championship?.basisLabel ?? "직전 시즌 순위"} 기준 팀과 선수 선택`} ref={teamStripRef}>
                 {teams.map((team) => (
-                  <div className={`paddock-team-switcher ${activeTeam === team.code ? "active" : ""}`} key={team.code} style={{ "--team-colour": team.colour } as React.CSSProperties}>
-                    <button className={activeTeam === team.code && paddockView === "team" ? "selected" : ""} onClick={() => { setActiveTeam(team.code); setActiveDriver(null); setPaddockView("team"); setInterviewSection("teams"); }} type="button">
+                  <div className={`paddock-team-switcher ${activeTeam === team.code ? "active" : ""}`} data-team-code={team.code} key={team.code} style={{ "--team-colour": team.colour } as React.CSSProperties}>
+                    <button className={activeTeam === team.code && paddockView === "team" ? "selected" : ""} onClick={() => { paddockSelectionChangedRef.current = true; setActiveTeam(team.code); setActiveDriver(null); setPaddockView("team"); setInterviewSection("teams"); }} type="button">
                       <i /><TeamLogo teamCode={team.code} teamName={team.name} /><span>{team.name}</span><small>TEAM</small>
                     </button>
                     <div>
                       {team.drivers.map((driver) => (
-                        <button aria-label={`${driver.name} 선수 정보`} className={activeDriver === driver.code && paddockView === "driver" ? "selected" : ""} key={driver.code} onClick={() => { setActiveTeam(team.code); setActiveDriver(driver.code); setPaddockView("driver"); setInterviewSection("drivers"); }} type="button">
+                        <button aria-label={`${driver.name} 선수 정보`} className={activeDriver === driver.code && paddockView === "driver" ? "selected" : ""} key={driver.code} onClick={() => { paddockSelectionChangedRef.current = true; setActiveTeam(team.code); setActiveDriver(driver.code); setPaddockView("driver"); setInterviewSection("drivers"); }} type="button">
                           <span>{driver.code}</span><small>{driver.number}</small>
                         </button>
                       ))}
@@ -601,8 +715,13 @@ export function Dashboard({
                   <div className="driver-identity">
                     <span>{selectedDriver.number}</span>
                     <div><p>{selectedDriver.team}</p><h4>{selectedDriver.name}</h4><small>{selectedDriver.nationality} · {selectedDriver.code}</small></div>
-                    <div className="driver-result"><small>RACE RESULT</small><b>{selectedDriver.resultStatus === "retired" ? "DNF" : `P${selectedDriver.resultPosition}`}</b><em>{selectedDriver.points} PTS</em></div>
+                    <div className="driver-result"><small>RACE RESULT</small><b>{selectedDriver.resultStatus === "retired" ? "DNF" : selectedDriver.resultPosition ? `P${selectedDriver.resultPosition}` : "—"}</b><em>{selectedDriver.points} PTS</em></div>
                   </div>
+                  <section className="driver-content-section">
+                    <div className="dated-group-heading"><h3>선수 인터뷰</h3><span>INTERVIEWS · {driverInterviewContent.length + driverInterviewNews.length}</span></div>
+                    {driverInterviewItemsByDate.map(([day, entries]) => <section className="dated-group" key={day}><div className="dated-group-heading minor"><h3>{day}</h3><span>{entries.length}건</span></div><div className="driver-links">{entries.map(({ kind, item }) => <button key={`${kind}-${item.id}`} onClick={() => setSelectedContent(kind === "team" ? teamModalContent(item) : newsModalContent(item, selectedDriver.colour, selectedDriver.name))} type="button"><span>DRIVER INTERVIEW · {kind === "team" ? item.source : item.outlet}</span><b>{item.title}</b><small>{item.summary}</small><em>인터뷰 상세 요약 보기 ↗</em></button>)}</div></section>)}
+                    {driverInterviewContent.length + driverInterviewNews.length === 0 && <p className="content-kind-note">이 선수의 직접 인터뷰를 수집 중입니다.</p>}
+                  </section>
                   <section className="driver-content-section">
                     <div className="dated-group-heading"><h3>선수 직접 관련 뉴스</h3><span>DRIVER NEWS · {driverNews.length}</span></div>
                     {driverNewsByDate.map(([day, articles]) => <section className="dated-group" key={day}><div className="dated-group-heading minor"><h3>{day}</h3><span>{articles.length}건</span></div><div className="driver-links">{articles.map((article) => <button key={article.id} onClick={() => setSelectedContent(newsModalContent(article, selectedDriver.colour, selectedDriver.name))} type="button"><span>DRIVER NEWS · {article.outlet} · {newsCategoryLabel(article.category)}</span><b>{article.title}</b><small>{article.summary}</small><em>상세 요약 보기 ↗</em></button>)}</div></section>)}
@@ -613,7 +732,7 @@ export function Dashboard({
                     {driverTeamContentByDate.map(([day, items]) => <section className="dated-group" key={day}><div className="dated-group-heading minor"><h3>{day}</h3><span>{items.length}건</span></div><div className="driver-links">{items.map((item) => <button key={item.id} onClick={() => setSelectedContent(teamModalContent(item))} type="button"><span>TEAM NEWS · {item.source} · {categoryLabel(item.contentType)}</span><b>{item.title}</b><small>{item.summary}</small><em>팀 뉴스 요약 보기 ↗</em></button>)}</div></section>)}
                   </section>}
                   {driverVideos.length > 0 && <section className="driver-content-section"><div className="dated-group-heading"><h3>관련 영상</h3><span>VIDEO · {driverVideos.length}</span></div><div className="driver-links">{driverVideos.map((video) => <button key={video.id} onClick={() => setSelectedContent(videoModalContent(video, selectedDriver.colour, selectedDriver.name))} type="button"><span>VIDEO · {video.source}</span><b>{video.title}</b><small>{video.participants.join(" · ")}</small><em>영상 정보 보기 ↗</em></button>)}</div></section>}
-                  {driverNews.length + driverTeamContent.length + driverVideos.length === 0 && <p className="empty-state">이 선수의 개별 인터뷰와 기사를 수집 중입니다.</p>}
+                  {driverNews.length + driverInterviewContent.length + driverInterviewNews.length + driverTeamContent.length + driverVideos.length === 0 && <p className="empty-state">이 선수의 개별 인터뷰와 기사를 수집 중입니다.</p>}
                   {selectedDriver.profileUrl && <a className="driver-profile-link" href={selectedDriver.profileUrl} rel="noreferrer" target="_blank">Formula 1 선수 프로필 ↗</a>}
                 </div>
               ) : null}
@@ -673,6 +792,8 @@ export function Dashboard({
           </div>
         ) : <p className="empty-state standings-loading">이 라운드의 직전 챔피언십 순위를 아직 불러올 수 없습니다.</p>}
       </section>}
+
+      {activeSection === "live" && <LiveTiming event={event} />}
 
       {activeSection === "race-centre" && <section className="section-page race-centre-page" id="race-centre">
         <div className="page-heading">

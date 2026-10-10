@@ -18,6 +18,7 @@ export type Video = {
   detailedSummary?: string | null;
   transcriptStatus?: "pending" | "ready" | "unavailable" | "failed";
   transcriptLanguage?: string | null;
+  publishedAt?: string | null;
 };
 
 export type DriverState = {
@@ -130,4 +131,25 @@ export type ChampionshipSnapshot = {
   basisLabel: string;
   constructors: ConstructorStanding[];
   drivers: DriverStanding[];
+};
+
+export type LiveTimingDriver = {
+  position: number; number: string; code: string; name: string; team: string; colour: string;
+  gap: string; interval: string; lastLap: string; bestLap: string; sectors: string[];
+  compound: string; tyreAge: number; inPit: boolean; retired: boolean;
+};
+
+export type LiveTimingSnapshot = {
+  event: string;
+  connection: "disabled" | "offline" | "connecting" | "reconnecting" | "live";
+  isLive: boolean;
+  updatedAt?: string | null;
+  delaySeconds?: number | null;
+  session: { name: string; meeting?: string | null; remaining: string; lap: number; totalLaps: number };
+  trackStatus: { code: string; message: string };
+  weather: Record<string, string | number | boolean | null>;
+  drivers: LiveTimingDriver[];
+  raceControl: Array<Record<string, string | number | boolean | null>>;
+  teamRadio: Array<Record<string, string | number | boolean | null>>;
+  lastError?: string | null;
 };

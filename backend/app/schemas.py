@@ -24,6 +24,7 @@ class Video(BaseModel):
     detailedSummary: str | None = None
     transcriptStatus: Literal["pending", "ready", "unavailable", "failed"] = "pending"
     transcriptLanguage: str | None = None
+    publishedAt: str | None = None
 
 
 class TyreAllocation(BaseModel):

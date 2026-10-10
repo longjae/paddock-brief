@@ -1,13 +1,18 @@
 from datetime import datetime
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+import asyncio
+import json
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 
 from app.core.config import Settings, get_settings
 from app.schemas import ChampionshipSnapshot, EventDetail, Health
 from app.services.jolpica import JolpicaService, get_jolpica_service
 from app.services.repository import EventRepository, get_repository
 from app.services.openf1 import OpenF1Service, get_openf1_service
+from app.services.live_timing import get_live_timing_service
 
 router = APIRouter()
 
@@ -112,4 +117,23 @@ def get_interviews(slug: str, repository: EventRepository = Depends(get_reposito
 @router.get("/events/{slug}/race-state")
 def get_race_state(slug: str, repository: EventRepository = Depends(get_repository)) -> dict[str, object]:
     event = repository.get_event(slug)
-    return {"event": event.slug, "drivers": [driver.model_dump() for driver in event.drivers], "isLive": False}
+    live = get_live_timing_service().snapshot(slug)
+    if live["drivers"]:
+        return live
+    live["drivers"] = [driver.model_dump() for driver in event.drivers]
+    return live
+
+
+@router.get("/events/{slug}/live-stream")
+async def get_live_stream(slug: str, request: Request) -> StreamingResponse:
+    async def events():
+        while not await request.is_disconnected():
+            payload = get_live_timing_service().snapshot(slug)
+            yield f"event: timing\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+            await asyncio.sleep(2)
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
+    )

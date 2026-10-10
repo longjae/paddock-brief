@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { Dashboard, type MainSection } from "@/components/dashboard";
 
-const MAIN_SECTIONS = new Set<MainSection>(["weekend", "interviews", "championship", "race-centre", "glossary"]);
+const MAIN_SECTIONS = new Set<MainSection>(["weekend", "interviews", "championship", "live", "race-centre", "glossary"]);
 
 export default async function RaceSectionPage({ params }: { params: Promise<{ slug: string; section: string }> }) {
   const { slug, section } = await params;
