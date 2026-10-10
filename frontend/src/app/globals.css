@@ -11,6 +11,10 @@
   --cyan: #56d9ce;
   --font-geist: "Pretendard Variable", Pretendard, "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
   --font-mono: "Pretendard Variable", Pretendard, "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --text-caption: 14px;
+  --text-body: 16px;
+  --text-card-title: 18px;
+  --text-section-title: 26px;
 }
 
 * { box-sizing: border-box; }
@@ -365,6 +369,102 @@ footer { display: flex; justify-content: space-between; padding: 20px 2px 34px; 
 .windows-fonts :where(small, .eyebrow, .live-tower-head, .live-feed-panel time, .standing-row > span small, .standing-row > em small) { font-size: 14px !important; }
 .windows-fonts :where(.team-content-card > p, .news-card p, .driver-links small, .live-message-list p, .live-disclaimer) { font-size: 14px; }
 .windows-fonts :where(.topbar nav a, .content-tabs a, .race-day-tabs button, .glossary-categories button) { font-size: 14px; }
+
+/* Large desktop typography: designed for a 2560 x 1440 fullscreen viewport. */
+@media (min-width: 1920px) {
+  body { font-size: var(--text-body); }
+  main { max-width: 2160px; padding: 0 48px; }
+  .topbar { height: 88px; gap: 56px; }
+  .brand { font-size: 18px; }
+  .brand-mark { width: 44px; height: 34px; font-size: 15px; }
+  nav { gap: 38px; font-size: 16px; }
+  nav a { padding: 33px 0 31px; }
+  .data-pill, .event-select { font-size: var(--text-caption); }
+
+  .app-shell { grid-template-columns: 300px minmax(0, 1fr); gap: 38px; }
+  .calendar-sidebar { padding: 34px 22px 34px 0; }
+  .calendar-heading strong { font-size: 22px; }
+  .calendar-heading > span,
+  .round-button > span:first-child,
+  .round-button small { font-size: var(--text-caption); }
+  .round-button { grid-template-columns: 42px 1fr 12px; gap: 10px; padding: 13px 11px; }
+  .round-button b, .calendar-empty { font-size: var(--text-body); }
+
+  .hero { min-height: 360px; }
+  h1 { font-size: clamp(70px, 4.5vw, 96px); }
+  .hero-copy { font-size: 18px; }
+  .track-card { width: min(100%, 560px); height: 270px; }
+  .track-meta b { font-size: var(--text-body); }
+  .track-meta small, .eyebrow { font-size: var(--text-caption); }
+
+  .session { grid-template-columns: 48px 1fr auto; padding: 24px 28px; }
+  .session > span, .session b, .session small, .session i { font-size: var(--text-caption); }
+  .content-grid { grid-template-columns: minmax(0, 1.8fr) minmax(420px, .72fr); gap: 24px; padding-top: 38px; }
+  .interview-panel { padding: 30px; }
+  .section-heading h2 { font-size: var(--text-section-title); }
+  .section-heading.compact h2, .team-content-heading h3 { font-size: 22px; }
+  .page-heading h2 { font-size: 52px; }
+  .page-heading p:last-child { font-size: var(--text-body); }
+
+  :is(
+    .section-heading button, .section-heading > a, .section-heading.compact > span,
+    .page-heading > a, .weekend-day header small, .day-sessions b, .day-sessions small,
+    .day-sessions em, .dated-group-heading span, .compact-card-grid span,
+    .compact-card-grid em, .content-tabs a, .content-kind-note, .race-day-tabs button small,
+    .race-session-card small, .race-session-card > em, .media-window > span,
+    .media-window small, .video-caption span, .video-summary-button, .video-list small,
+    .video-list em, .team-content-heading > span, .paddock-team-switcher > button small,
+    .paddock-team-switcher > div span, .paddock-team-switcher > div small,
+    .paddock-view-heading span, .paddock-view-heading small, .team-tabs button,
+    .team-card-header span, .team-card-header em, .team-content-card footer small,
+    .team-content-card footer b, .modal-meta span, .modal-meta em,
+    .modal-summary small, .modal-detail small, .modal-participants, .modal-source-link,
+    .driver-roster button > span, .driver-roster button b, .driver-roster button small,
+    .driver-identity p, .driver-identity small, .driver-result em, .driver-links span,
+    .driver-links em, .driver-profile-link, .outlet-tabs button, .news-meta b,
+    .news-meta span, .news-tags span, .news-card footer small, .news-card footer b,
+    .briefing p span, .compound span, .lap, .driver-row > div small, .position, .gap, .tyre, .status-line, footer,
+    .standings-basis, .standings-panel > header > span, .standing-row strong i,
+    .standing-row > div small, .standing-row > span small, .standing-row > em small,
+    .glossary-search > span, .glossary-categories button, .glossary-result-heading span,
+    .glossary-result-heading small, .glossary-card summary span, .glossary-detail small,
+    .glossary-card footer > small, .glossary-card footer button, .live-connection small,
+    .live-summary-strip span, .live-summary-strip b small, .live-tower header > span,
+    .live-tower-head, .live-tower-list article > div small, .live-tower-list time,
+    .live-tower-list em, .live-compound, .live-compound small, .live-message-list time,
+    .radio-list b, .live-disclaimer
+  ) { font-size: var(--text-caption); }
+
+  :is(
+    .weekend-day > p, .day-sessions span, .compact-card-grid small,
+    .press-intro > p, .media-window b, .video-caption p, .video-list b,
+    .paddock-guide, .paddock-team-switcher > button span, .team-content-card > p,
+    .modal-summary p, .modal-detail p, .driver-links small, .driver-links > p,
+    .news-card > p, .briefing > p:not(.eyebrow), .compound b, .compound small,
+    .empty-state, .driver-row > div b, .standing-row strong, .standing-row > b,
+    .standing-row > span, .standing-row > em, .glossary-search input,
+    .glossary-card summary strong, .glossary-card > p, .glossary-detail p,
+    .live-connection b, .live-summary-strip b, .live-tower-list article > b,
+    .live-tower-list article strong, .live-message-list p, .radio-transcript p
+  ) { font-size: var(--text-body); }
+
+  :is(.compact-card-grid b, .team-content-card h4, .driver-links b, .news-card h4) {
+    font-size: var(--text-card-title);
+  }
+
+  .weekend-day h3, .press-intro h3, .race-session-card h3,
+  .video-caption h3, .paddock-view-heading h4, .driver-identity h4,
+  .standings-panel > header h3, .glossary-card summary h3,
+  .live-tower h3, .live-feed-panel h3 { font-size: 24px; }
+
+  .weekend-day, .race-session-card { padding: 26px; }
+  .weekend-day > header > span { width: 54px; height: 54px; font-size: var(--text-caption); }
+  .compact-card-grid button { min-height: 180px; padding: 18px; }
+  .news-card { min-height: 250px; padding: 22px; }
+  .standing-row { min-height: 68px; }
+  .live-tower-list > article { min-height: 62px; }
+  .live-message-list { max-height: 430px; }
+}
 
 @media (max-width: 980px) {
   main { padding: 0 20px; }.topbar { gap: 18px; }.topbar nav { display: flex; gap: 15px; order: 3; width: 100%; height: 42px; overflow-x: auto; }.topbar nav a { flex: 1 0 auto; padding: 10px 0; }.topbar { height: auto; min-height: 72px; flex-wrap: wrap; padding-top: 12px; }.event-select { display: block; margin-left: auto; }.data-pill { margin-left: 0; }.app-shell { display: block; }.calendar-sidebar { display: none; }.hero { grid-template-columns: 1fr; padding: 60px 0 20px; }.track-card { justify-self: stretch; border-left: 0; }.session-strip { grid-template-columns: 1fr 1fr; }.content-grid { grid-template-columns: 1fr; }.sidebar { display: grid; grid-template-columns: 1fr 1fr; }.driver-roster { grid-template-columns: repeat(4, 1fr); }.weekend-days { grid-template-columns: 1fr; }.compact-card-grid { grid-template-columns: 1fr 1fr; }.race-centre-grid, .standings-grid, .glossary-grid, .live-grid { grid-template-columns: 1fr; }.glossary-search { flex-basis: 100%; width: 100%; }
