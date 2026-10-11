@@ -96,6 +96,7 @@ class LiveTimingService:
         self.updated_at: str | None = None
         self.topics: dict[str, Any] = {}
         self.radio_transcripts: dict[str, str] = {}
+        self.radio_translations: dict[str, str] = {}
         self.race_control_history: dict[str, dict[str, Any]] = {}
         self._session_path: str | None = None
         self._task: asyncio.Task[None] | None = None
@@ -121,13 +122,19 @@ class LiveTimingService:
         if path and self._session_path and path != self._session_path:
             self.race_control_history.clear()
             self.radio_transcripts.clear()
+            self.radio_translations.clear()
         if path:
             self._session_path = path
 
     async def transcribe_team_radio(self, path: str, session_path: str) -> dict[str, str | None]:
         audio_url = team_radio_audio_url(path, session_path)
         if path in self.radio_transcripts:
-            return {"audioUrl": audio_url, "transcript": self.radio_transcripts[path], "language": "en"}
+            return {
+                "audioUrl": audio_url,
+                "transcript": self.radio_transcripts[path],
+                "translation": self.radio_translations.get(path),
+                "language": "en",
+            }
         if not self.settings.openai_api_key:
             return {"audioUrl": audio_url, "transcript": None, "language": None}
         async with httpx.AsyncClient(timeout=45, follow_redirects=True) as client:
@@ -141,9 +148,44 @@ class LiveTimingService:
             )
             transcript_response.raise_for_status()
         transcript = str(transcript_response.json().get("text") or "").strip()
+        translation: str | None = None
         if transcript:
             self.radio_transcripts[path] = transcript
-        return {"audioUrl": audio_url, "transcript": transcript or None, "language": "en" if transcript else None}
+            try:
+                async with httpx.AsyncClient(timeout=45) as client:
+                    translation_response = await client.post(
+                        "https://api.openai.com/v1/responses",
+                        headers={"Authorization": f"Bearer {self.settings.openai_api_key}"},
+                        json={
+                            "model": self.settings.openai_summary_model,
+                            "input": (
+                                "다음 Formula 1 팀 라디오를 자연스럽고 간결한 한국어로 번역하세요. "
+                                "고유명사와 F1 용어를 유지하고 번역문만 출력하세요.\n\n" + transcript
+                            ),
+                        },
+                    )
+                    translation_response.raise_for_status()
+                translation_data = translation_response.json()
+                translation_text = translation_data.get("output_text") or next(
+                    (
+                        item.get("text")
+                        for output in translation_data.get("output", [])
+                        for item in output.get("content", [])
+                        if item.get("type") == "output_text"
+                    ),
+                    None,
+                )
+                translation = str(translation_text or "").strip() or None
+                if translation:
+                    self.radio_translations[path] = translation
+            except (httpx.HTTPError, ValueError):
+                LOGGER.warning("Team radio translation failed for %s", path, exc_info=True)
+        return {
+            "audioUrl": audio_url,
+            "transcript": transcript or None,
+            "translation": translation,
+            "language": "en" if transcript else None,
+        }
 
     def start(self) -> None:
         if self.settings.live_timing_enabled and self._task is None:

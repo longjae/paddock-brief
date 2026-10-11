@@ -6,7 +6,7 @@ import type { EventDetail, LiveTimingSnapshot } from "@/lib/types";
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 const STATUS_LABEL: Record<LiveTimingSnapshot["connection"], string> = { disabled: "수집기 대기", offline: "오프라인", connecting: "연결 중", reconnecting: "재연결 중", live: "실시간" };
 const TRACK_LABEL: Record<string, string> = { "1": "트랙 정상", "2": "황기", "4": "세이프티카", "5": "적기", "6": "가상 세이프티카", "7": "VSC 종료 중" };
-type RadioTranscript = { status: "loading" | "ready" | "failed"; text?: string | null; audioUrl?: string };
+type RadioTranscript = { status: "loading" | "ready" | "failed"; text?: string | null; translation?: string | null; audioUrl?: string };
 
 function value(item: Record<string, string | number | boolean | null>, key: string): string {
   return item[key] === null || item[key] === undefined ? "" : String(item[key]);
@@ -28,6 +28,7 @@ export function LiveTiming({ event }: { event: EventDetail }) {
   const [snapshot, setSnapshot] = useState<LiveTimingSnapshot | null>(null);
   const [streamState, setStreamState] = useState<"opening" | "open" | "retrying">("opening");
   const [radioTranscripts, setRadioTranscripts] = useState<Record<string, RadioTranscript>>({});
+  const [radioTranslationEnabled, setRadioTranslationEnabled] = useState(true);
   const [raceControlHistory, setRaceControlHistory] = useState<LiveTimingSnapshot["raceControl"]>([]);
 
   const acceptSnapshot = (state: LiveTimingSnapshot) => {
@@ -43,8 +44,8 @@ export function LiveTiming({ event }: { event: EventDetail }) {
     if (!path || radioTranscripts[path]) return;
     setRadioTranscripts((current) => ({ ...current, [path]: { status: "loading", audioUrl } }));
     fetch(`${API_BASE}/team-radio/transcript?path=${encodeURIComponent(path)}&sessionPath=${encodeURIComponent(sessionPath)}`)
-      .then((response) => { if (!response.ok) throw new Error("transcript unavailable"); return response.json() as Promise<{ audioUrl: string; transcript?: string | null }>; })
-      .then((result) => setRadioTranscripts((current) => ({ ...current, [path]: { status: "ready", text: result.transcript, audioUrl: result.audioUrl } })))
+      .then((response) => { if (!response.ok) throw new Error("transcript unavailable"); return response.json() as Promise<{ audioUrl: string; transcript?: string | null; translation?: string | null }>; })
+      .then((result) => setRadioTranscripts((current) => ({ ...current, [path]: { status: "ready", text: result.transcript, translation: result.translation, audioUrl: result.audioUrl } })))
       .catch(() => setRadioTranscripts((current) => ({ ...current, [path]: { status: "failed" } })));
   };
 
@@ -104,12 +105,20 @@ export function LiveTiming({ event }: { event: EventDetail }) {
       </div></section>
       <aside className="live-side-column">
         <section className="panel live-feed-panel"><header><div><p className="eyebrow">RACE CONTROL</p><h3>레이스 컨트롤</h3></div><span>{raceControlHistory.length} MESSAGES</span></header><div className="live-message-list">{!raceControlHistory.length && <p className="empty-state">공식 메시지를 기다리고 있습니다.</p>}{raceControlHistory.map((message, index) => <article key={`${value(message, "Utc")}-${value(message, "Message")}-${index}`}><time>{value(message, "Utc").slice(11, 19) || "—"}</time><p>{value(message, "Message") || value(message, "Category")}</p></article>)}</div></section>
-        <section className="panel live-feed-panel"><header><div><p className="eyebrow">TEAM RADIO</p><h3>팀 라디오</h3></div></header><div className="live-message-list radio-list">{!snapshot?.teamRadio.length && <p className="empty-state">공개된 팀 라디오를 기다리고 있습니다.</p>}{snapshot?.teamRadio.map((radio, index) => {
+        <section className="panel live-feed-panel radio-panel"><header><div><p className="eyebrow">TEAM RADIO</p><h3>팀 라디오</h3></div><label className="radio-translation-toggle"><span>한국어 번역</span><input checked={radioTranslationEnabled} onChange={(change) => setRadioTranslationEnabled(change.target.checked)} type="checkbox" /><i /></label></header><div className="live-message-list radio-list">{!snapshot?.teamRadio.length && <p className="empty-state">공개된 팀 라디오를 기다리고 있습니다.</p>}{snapshot?.teamRadio.map((radio, index) => {
           const path = value(radio, "Path");
           const sessionPath = value(radio, "SessionPath");
           const audioUrl = value(radio, "AudioUrl");
           const transcript = radioTranscripts[path];
-          return <article key={`${value(radio, "Utc")}-${index}`}><b>#{value(radio, "RacingNumber") || "—"}</b><time>{value(radio, "Utc").slice(11, 19)}</time><div className="radio-transcript" role="status">{!transcript && <><p>팀 라디오 내용을 불러오는 중입니다…</p>{audioUrl && <audio controls preload="none" src={audioUrl}>팀 라디오 오디오</audio>}</>}{transcript?.status === "loading" && <><p>팀 라디오 음성을 텍스트로 변환 중입니다…</p>{transcript.audioUrl && <audio controls preload="none" src={transcript.audioUrl}>팀 라디오 오디오</audio>}</>}{transcript?.status === "failed" && <><p>텍스트 변환에 실패했습니다. 음성은 직접 재생할 수 있습니다.</p>{audioUrl && <audio controls preload="none" src={audioUrl}>팀 라디오 오디오</audio>}</>}{transcript?.status === "ready" && <><p>{transcript.text || "음성은 재생할 수 있지만 명확한 발화를 인식하지 못했습니다."}</p>{transcript.audioUrl && <audio controls preload="none" src={transcript.audioUrl}>팀 라디오 오디오</audio>}</>}</div></article>;
+          const racingNumber = value(radio, "RacingNumber");
+          const driver = snapshot?.drivers.find((item) => item.number === racingNumber);
+          const utc = value(radio, "Utc");
+          const published = utc ? new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Seoul" }).format(new Date(utc)) : "시간 정보 없음";
+          return <article className="radio-card" key={`${utc}-${index}`} style={{ "--driver-colour": driver?.colour || "#e10600" } as React.CSSProperties}>
+            <div className="radio-driver"><span>#{racingNumber || "—"}</span><div><small>{driver?.team || "FORMULA 1"}</small><b>{driver?.name || driver?.code || `CAR ${racingNumber || "—"}`}</b></div><time>{published}</time></div>
+            <div className="radio-player">{(transcript?.audioUrl || audioUrl) && <audio controls preload="metadata" src={transcript?.audioUrl || audioUrl}>팀 라디오 오디오</audio>}</div>
+            <div className="radio-transcript" role="status">{!transcript && <p>팀 라디오 내용을 불러오는 중입니다…</p>}{transcript?.status === "loading" && <p>팀 라디오 음성을 텍스트로 변환하고 있습니다…</p>}{transcript?.status === "failed" && <p>텍스트 변환에 실패했습니다. 위 재생 버튼으로 음성을 들을 수 있습니다.</p>}{transcript?.status === "ready" && <>{radioTranslationEnabled && transcript.translation && <p className="translated"><i />{transcript.translation}</p>}<p className={radioTranslationEnabled && transcript.translation ? "original" : ""}><i />{transcript.text || "명확한 발화를 인식하지 못했습니다."}</p></>}</div>
+          </article>;
         })}</div></section>
       </aside>
     </div>
