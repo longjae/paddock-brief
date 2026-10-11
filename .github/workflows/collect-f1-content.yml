@@ -2,8 +2,8 @@ name: Collect F1 weekend content
 
 on:
   schedule:
-    # 2시간마다 확인하되, 수집기는 각 레이스 현지시간 목~일에만 실제 작업한다.
-    - cron: "17 */2 * * *"
+    # 매시 정각 확인하되, 수집기는 각 레이스 현지시간 목요일부터 월요일까지 실제 작업한다.
+    - cron: "0 * * * *"
   workflow_dispatch:
     inputs:
       event_slug:
