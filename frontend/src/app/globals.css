@@ -30,7 +30,7 @@ body {
 }
 button, a { font: inherit; }
 a { color: inherit; text-decoration: none; }
-main { max-width: 1760px; margin: auto; padding: 0 36px; }
+main { max-width: 2160px; margin: auto; padding: 0 36px; }
 .initial-loader { min-height: 100vh; display: grid; place-content: center; justify-items: center; gap: 10px; text-align: center; }
 .initial-loader-mark { display: grid; place-items: center; width: 54px; height: 42px; margin-bottom: 10px; color: #fff; background: var(--f1-red); border-radius: 4px 15px 4px 4px; font: 900 17px var(--font-mono); transform: skew(-10deg); }
 .initial-loader p { margin: 0; color: var(--f1-red); font: 800 9px var(--font-mono); letter-spacing: .16em; }
@@ -399,13 +399,8 @@ footer { display: flex; justify-content: space-between; padding: 20px 2px 34px; 
 .live-tyre-note { margin: 0; padding: 13px 20px; color: var(--muted); background: #0d0e0e; border-top: 1px solid var(--line); font-size: 10px; line-height: 1.6; }
 .live-tyre-note b { margin-right: 7px; color: var(--ink); }
 
-.windows-fonts body { font-size: 16px; }
-.windows-fonts :where(small, .eyebrow, .live-tower-head, .live-feed-panel time, .standing-row > span small, .standing-row > em small) { font-size: 14px !important; }
-.windows-fonts :where(.team-content-card > p, .news-card p, .driver-links small, .live-message-list p, .live-disclaimer) { font-size: 14px; }
-.windows-fonts :where(.topbar nav a, .content-tabs a, .glossary-categories button) { font-size: 14px; }
-
 /* Large desktop typography: designed for a 2560 x 1440 fullscreen viewport. */
-@media (min-width: 1920px) {
+@media (min-width: 2200px) {
   body { font-size: var(--text-body); }
   main { max-width: 2160px; padding: 0 48px; }
   .topbar { height: 88px; gap: 56px; }
@@ -487,7 +482,7 @@ footer { display: flex; justify-content: space-between; padding: 20px 2px 34px; 
     font-size: var(--text-card-title);
   }
 
-  .weekend-day h3, .press-intro h3, .race-session-card h3,
+  .weekend-day h3, .press-intro h3,
   .video-caption h3, .paddock-view-heading h4, .driver-identity h4,
   .standings-panel > header h3, .glossary-card summary h3,
   .live-tower h3, .live-feed-panel h3, .live-tyre-panel h3 { font-size: 24px; }
@@ -578,4 +573,36 @@ footer { display: flex; justify-content: space-between; padding: 20px 2px 34px; 
   .live-shell .live-side-column { grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(2, minmax(0, 250px)); }
   .live-shell .live-tower { height: min(60dvh, 580px); }
   .mini-sector-legend { flex-wrap: wrap; }
+}
+
+/* Keep text legible and consistent across desktop display scales. */
+.topbar nav { font-size: clamp(13px, .8vw, 16px); }
+.event-select-wrap, .event-select, .data-pill { font-size: clamp(11px, .7vw, 14px); }
+.eyebrow { font-size: clamp(11px, .72vw, 14px); }
+.weekend-page :is(.weekend-day > p, .day-sessions span, .compact-card-grid small, .briefing > p:not(.eyebrow)) { font-size: clamp(12px, .82vw, 16px); }
+.weekend-page :is(.weekend-day header small, .day-sessions b, .day-sessions small, .day-sessions em, .compact-card-grid span, .compact-card-grid em, .compound small) { font-size: clamp(11px, .72vw, 14px); }
+.weekend-page .compact-card-grid b { font-size: clamp(14px, .9vw, 18px); }
+.live-shell :is(.live-summary-strip span, .live-record-strip span, .live-tower header > span, .live-tower-head, .live-tower-list article > div small, .live-tower-list time, .live-tower-list em, .live-tyre-usage small, .live-message-list time, .radio-driver small, .radio-driver time) { font-size: clamp(11px, .72vw, 14px); }
+.live-shell :is(.live-tower-list article strong, .live-tower-list article > b, .live-message-list p, .radio-transcript p, .radio-driver b) { font-size: clamp(12px, .82vw, 16px); }
+.live-shell :is(.live-sector-meta strong, .mini-sector-legend, .mini-sector-help, .live-disclaimer, .live-tyre-usage b, .radio-translation-toggle) { font-size: clamp(11px, .72vw, 14px); }
+
+@media (max-width: 640px) {
+  .hero { min-height: 0; grid-template-columns: minmax(0, 1fr) 96px; gap:10px; padding: 24px 0; }
+  .hero h1 { font-size: clamp(28px, 8vw, 38px); line-height: 1.04; }
+  .hero-copy { margin: 12px 0 0; font-size: 12px; }
+  .track-card { align-self: center; width: 96px; height: 96px; border: 0; }
+  .track-card > img { width: 100%; height: 72%; }
+  .track-meta b { font-size: 9px; }
+  .track-meta small { display: none; }
+  .live-shell .live-tower { overflow-x: hidden; }
+  .live-shell .live-tower-head { display: none; }
+  .live-shell .live-tower-list { min-width: 0; width: 100%; }
+  .live-shell .live-tower-list > article { grid-template-columns: 24px minmax(0, 1fr) 82px; grid-template-rows: auto auto; gap: 5px 6px; min-height: 78px; padding: 7px 2px; }
+  .live-shell .live-tower-list article > b { grid-column: 1; grid-row: 1; }
+  .live-shell .live-tower-list article > .live-driver-name { grid-column: 2; grid-row: 1; }
+  .live-shell .live-tower-list article > :is(time, em) { display: none; }
+  .live-shell .live-tower-list article > .mini-sector-dashboard { grid-column: 2 / 4; grid-row: 2; }
+  .live-shell .live-tower-list article > .live-tyre-dashboard { grid-column: 3; grid-row: 1; }
+  .live-shell .mini-sector-time { font-size: 11px; }
+  .live-shell .live-tyre-usage :is(b, small) { font-size: 9px; }
 }
