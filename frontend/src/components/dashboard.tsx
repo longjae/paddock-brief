@@ -157,6 +157,30 @@ function publishedTime(value?: string | null): number {
   return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time;
 }
 
+function publishedStamp(value?: string | null): string {
+  const time = publishedTime(value);
+  if (!Number.isFinite(time)) return "발행일 미상";
+  return new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Seoul" }).format(time);
+}
+
+function reportAge(value: string | null | undefined, now: number): string {
+  const time = publishedTime(value);
+  if (!Number.isFinite(time) || now <= 0) return "";
+  const days = Math.floor((now - time) / 86_400_000);
+  if (days < 0) return "";
+  if (days === 0) return "24시간 이내";
+  return `${days}일 전`;
+}
+
+function sessionTime(value: string): number {
+  return new Date(value.includes("T") ? value : `${value.replace(" ", "T")}+09:00`).getTime();
+}
+
+function shortBrief(text: string): string {
+  const clean = text.trim();
+  return clean.length > 160 ? `${clean.slice(0, 160).trimEnd()}…` : clean;
+}
+
 function newestFirst<T extends { publishedAt?: string | null }>(items: T[]): T[] {
   return items.toSorted((left, right) => publishedTime(right.publishedAt) - publishedTime(left.publishedAt));
 }
@@ -297,6 +321,7 @@ export function Dashboard({
   const [championship, setChampionship] = useState<ChampionshipSnapshot | null>(null);
   const [championshipLoading, setChampionshipLoading] = useState(true);
   const [glossaryQuery, setGlossaryQuery] = useState("");
+  const [showAllReports, setShowAllReports] = useState(false);
   const [glossaryCategory, setGlossaryCategory] = useState<"전체" | GlossaryCategory>("전체");
   const teamStripRef = useRef<HTMLDivElement>(null);
   const paddockSelectionChangedRef = useRef(false);
@@ -473,7 +498,20 @@ export function Dashboard({
     article.tags.some((tag) => tag.includes("기자회견")) || article.title.includes("기자회견") || article.title.includes("프레스 컨퍼런스")
   );
   const weekendNews = event.news.filter((article) => article.category !== "interview");
-  const weekendNewsByDate = groupByPublishedDay(weekendNews);
+  const recentReports = newestFirst(weekendNews);
+  const candidateReports = recentReports.filter((article) =>
+    !/베팅|배당|판타지|오늘의 F1 역사/.test(article.title) &&
+    !/확인할 수 없다|제공된 본문에는/.test(article.summary)
+  );
+  const freshReports = candidateReports.filter((article) => currentTime > 0 && currentTime - publishedTime(article.publishedAt) <= 48 * 60 * 60 * 1000 && publishedTime(article.publishedAt) <= currentTime);
+  const leadReports = (freshReports.length > 0 ? freshReports : candidateReports).slice(0, 3);
+  const latestReport = recentReports[0];
+  const hasFreshReports = freshReports.length > 0;
+  const todayKey = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "Asia/Seoul" });
+  const hasTodayReports = hasFreshReports && todayKey.format(publishedTime(freshReports[0].publishedAt)) === todayKey.format(currentTime);
+  const weekendNewsByDate = groupByPublishedDay(showAllReports ? weekendNews : recentReports.slice(0, 9));
+  const nextSession = currentTime > 0 ? event.sessions.filter((session) => sessionTime(session.startsAt) > currentTime).toSorted((left, right) => sessionTime(left.startsAt) - sessionTime(right.startsAt))[0] : undefined;
+  const nextEvent = events.find((calendarEvent) => calendarEvent.season === event.season && calendarEvent.round === event.round + 1);
   const teamContentByDate = groupByPublishedDay(visibleTeamContent);
   const driverNewsByDate = groupByPublishedDay(driverNews);
   const driverTeamContentByDate = groupByPublishedDay(driverTeamContent);
@@ -536,6 +574,21 @@ export function Dashboard({
 
       {activeSection === "weekend" && (
         <section className="section-page weekend-page" id="weekend">
+          <div className="weekend-status" role="status">
+            <div><p className="eyebrow">선택한 GP 상태</p><strong>{nextSession ? `다음 세션 · ${nextSession.name}` : "이 GP의 세션 일정이 지났습니다"}</strong><small>{nextSession ? `${nextSession.startsAt} KST 예정` : "아래 일정과 경기 자료는 선택한 GP의 기록입니다."}</small></div>
+            {!nextSession && nextEvent && <Link href={pageHref("weekend", nextEvent.slug)}>다음 경기 · {nextEvent.name} →</Link>}
+          </div>
+          <section className={`brief-overview ${hasFreshReports ? "fresh" : "archive"}`} aria-labelledby="brief-overview-title">
+            <div className="brief-overview-heading"><div><p className="eyebrow">PADDOCK BRIEF</p><h2 id="brief-overview-title">{hasTodayReports ? "오늘 달라진 이야기" : hasFreshReports ? "최근 보도" : "지난 보도"}</h2></div><span>{latestReport ? `마지막 발행 ${publishedStamp(latestReport.publishedAt)} · ${reportAge(latestReport.publishedAt, currentTime)}` : "게시된 보도 없음"}</span></div>
+            {!hasFreshReports && latestReport && <p className="brief-stale-note">최근 48시간 안에 발행된 보도가 없습니다. 아래 내용은 지난 브리핑이며, 현재 경기 상황과 구분해 읽어 주세요.</p>}
+            {leadReports.length > 0 ? <div className="brief-leads">{leadReports.map((article, index) => <article key={article.id}>
+              <div className="brief-lead-meta"><span>{String(index + 1).padStart(2, "0")} · {article.outlet} · {newsCategoryLabel(article.category)}</span><time dateTime={article.publishedAt ?? undefined}>{publishedStamp(article.publishedAt)} · {reportAge(article.publishedAt, currentTime)}</time></div>
+              <h3>{article.title}</h3>
+              <p className="brief-short"><b>30초 요약 · 보도된 내용</b>{shortBrief(article.summary)}</p>
+              <dl><div><dt>편집 판단</dt><dd>{article.category === "analysis" ? "원문의 분석을 요약한 글입니다. 별도 편집 판단은 아직 없습니다." : "이 보도에 대한 별도 편집 판단은 아직 없습니다."}</dd></div><div><dt>다음 확인</dt><dd>{nextSession ? `${nextSession.name} 이후 새 자료` : "공식 발표 또는 후속 보도 공개 시"}</dd></div></dl>
+              <button onClick={() => setSelectedContent(newsModalContent(article, "var(--f1-red)"))} type="button">원문과 깊은 분석 보기 →</button>
+            </article>)}</div> : <p className="brief-empty">이 GP에서 확인할 수 있는 보도가 아직 없습니다. 아래 세션 일정과 공식 레이스 허브를 확인하세요.</p>}
+          </section>
           <div className="page-heading">
             <div><p className="eyebrow">RACE WEEKEND</p><h2>위켄드 가이드 · 레이스 센터</h2><p>세션 일정, 타이어, 경기 순위와 레이스 자료를 한곳에서 확인합니다.</p></div>
             <a href={officialRaceHub} rel="noreferrer" target="_blank">Formula 1 공식 레이스 허브 ↗</a>
@@ -583,17 +636,19 @@ export function Dashboard({
               <div className="briefing panel"><p className="eyebrow">RACE BRIEF</p>{event.summary.map((item, index) => <p key={item}><span>0{index + 1}</span>{item}</p>)}</div>
             </div>
           </div>
-          <div className="weekend-feed panel">
+          <details className="weekend-report-details"><summary>전체 브리핑 · {weekendNews.length}건 펼치기 <span>날짜별 보도와 상세 요약</span></summary><div className="weekend-feed panel">
             <div className="section-heading compact"><div><p className="eyebrow">DAILY REPORTS</p><h2>날짜별 레이스 자료</h2></div><span>{weekendNews.length} ARTICLES</span></div>
             {weekendNewsByDate.map(([day, articles]) => (
               <section className="dated-group" key={day}>
                 <div className="dated-group-heading"><h3>{day}</h3><span>{articles.length}건</span></div>
                 <div className="compact-card-grid">
-                  {articles.map((article) => <button key={article.id} onClick={() => setSelectedContent(newsModalContent(article, "var(--f1-red)"))} type="button"><span>{article.outlet} · {newsCategoryLabel(article.category)}</span><b>{article.title}</b><small>{article.summary}</small><em>상세 요약 보기 ↗</em></button>)}
+                  {articles.map((article) => <button key={article.id} onClick={() => setSelectedContent(newsModalContent(article, "var(--f1-red)"))} type="button"><span>{article.outlet} · {newsCategoryLabel(article.category)} · {publishedStamp(article.publishedAt)} · {reportAge(article.publishedAt, currentTime)}</span><b>{article.title}</b><small>{article.summary}</small><em>상세 요약 보기 ↗</em></button>)}
                 </div>
               </section>
             ))}
-          </div>
+            {weekendNews.length > 9 && <button className="reports-toggle" onClick={() => setShowAllReports((value) => !value)} type="button">{showAllReports ? "최근 9건만 보기" : `전체 ${weekendNews.length}건 보기`}</button>}
+            {weekendNews.length === 0 && <p className="empty-state">아직 이 GP의 보도가 없습니다.</p>}
+          </div></details>
         </section>
       )}
 
