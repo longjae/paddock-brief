@@ -364,6 +364,7 @@ footer { display: flex; justify-content: space-between; padding: 20px 2px 34px; 
 .live-connection > span { width: 9px; height: 9px; background: #777; border-radius: 50%; }
 .live-connection > div { display: flex; flex-direction: column; gap: 3px; }.live-connection b { font-size: 11px; }.live-connection small { color: var(--muted); font: 7px var(--font-mono); }
 .live-connection.connected { border-color: rgba(32,212,107,.45); }.live-connection.connected > span { background: #20d46b; box-shadow: 0 0 12px rgba(32,212,107,.75); animation: live-pulse 1.4s infinite; }.live-connection.reconnecting > span, .live-connection.connecting > span { background: var(--yellow); }
+.live-connection.stale { border-color: rgba(255,188,0,.45); }.live-connection.stale > span { background: var(--yellow); }
 @keyframes live-pulse { 50% { opacity: .4; } }
 .live-summary-strip { display: grid; grid-template-columns: repeat(4,1fr); margin-bottom: 14px; background: var(--line); border: 1px solid var(--line); border-radius: 13px; overflow: hidden; gap: 1px; }
 .live-summary-strip article { min-width: 0; display: flex; flex-direction: column; gap: 7px; padding: 17px; background: #111313; }.live-summary-strip span { color: var(--muted); font: 8px var(--font-mono); letter-spacing: .08em; }.live-summary-strip b { overflow: hidden; font: 800 16px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }.live-summary-strip b small { color: var(--muted); font-size: 10px; }

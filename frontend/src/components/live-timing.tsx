@@ -80,11 +80,13 @@ export function LiveTiming({ event }: { event: EventDetail }) {
 
   const updatedLabel = useMemo(() => !snapshot?.updatedAt ? "아직 수신된 라이브 신호가 없습니다" : `${new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Asia/Seoul" }).format(new Date(snapshot.updatedAt))} KST 갱신`, [snapshot?.updatedAt]);
   const connection = snapshot?.connection ?? (streamState === "retrying" ? "reconnecting" : "connecting");
-  const statusLabel = connection === "live" && !snapshot?.isLive ? "피드 연결 · 세션 대기" : STATUS_LABEL[connection];
+  const feedAgeSeconds = snapshot?.updatedAt ? Math.max(0, Math.floor((Date.now() - new Date(snapshot.updatedAt).getTime()) / 1000)) : null;
+  const feedStale = snapshot?.isLive && feedAgeSeconds !== null && feedAgeSeconds > 30;
+  const statusLabel = feedStale ? "데이터 갱신 지연" : connection === "live" && !snapshot?.isLive ? "피드 연결 · 세션 대기" : STATUS_LABEL[connection];
   const weather = snapshot?.weather ?? {};
 
   return <section className="section-page live-page" id="live">
-    <div className="page-heading live-heading"><div><p className="eyebrow">LIVE TIMING</p><h2>{event.name}<small>{snapshot?.session.name || "세션 연결 중"}</small></h2></div><div className={`live-connection ${snapshot?.isLive ? "connected" : connection}`} role="status"><span /><div><b>{statusLabel}</b><small>{updatedLabel}</small></div></div></div>
+    <div className="page-heading live-heading"><div><p className="eyebrow">LIVE TIMING</p><h2>{event.name}<small>{snapshot?.session.name || "세션 연결 중"}</small></h2></div><div className={`live-connection ${feedStale ? "stale" : snapshot?.isLive ? "connected" : connection}`} role="status"><span /><div><b>{statusLabel}</b><small>{updatedLabel}{feedStale ? ` · ${feedAgeSeconds}초 전` : ""}</small></div></div></div>
     <div className="live-summary-strip">
       <article><span>LAP</span><b>{snapshot?.session.lap || "—"}<small> / {snapshot?.session.totalLaps || "—"}</small></b></article>
       <article><span>TIME REMAINING</span><b>{snapshot?.session.remaining || "—"}</b></article>
