@@ -504,7 +504,8 @@ export function Dashboard({
     !/확인할 수 없다|제공된 본문에는/.test(article.summary)
   );
   const freshReports = candidateReports.filter((article) => currentTime > 0 && currentTime - publishedTime(article.publishedAt) <= 48 * 60 * 60 * 1000 && publishedTime(article.publishedAt) <= currentTime);
-  const leadReports = (freshReports.length > 0 ? freshReports : candidateReports).slice(0, 3);
+  const prioritizedReports = freshReports.length > 0 ? freshReports : candidateReports;
+  const leadReports = [...prioritizedReports.filter((article) => article.category === "race-report" || article.category === "analysis"), ...prioritizedReports.filter((article) => article.category !== "race-report" && article.category !== "analysis")].slice(0, 3);
   const latestReport = recentReports[0];
   const hasFreshReports = freshReports.length > 0;
   const todayKey = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "Asia/Seoul" });
@@ -560,7 +561,7 @@ export function Dashboard({
 
       <div className={`app-shell ${activeSection === "live" ? "live-shell" : ""}`}>
         <div className="dashboard-page">
-      <section className="hero" id="top">
+      <section className={`hero ${activeSection === "weekend" ? "hero-weekend" : ""}`} id="top">
         <div>
           <p className="eyebrow">ROUND {String(event.round).padStart(2, "0")} · {event.season}</p>
           <h1>{event.name}</h1>
@@ -600,7 +601,7 @@ export function Dashboard({
                 <article className="weekend-day" key={day}>
                   <header><span>{day === "금요일" ? "FRI" : day === "토요일" ? "SAT" : "SUN"}</span><div><h3>{day}</h3><small>{sessions.length} SESSIONS</small></div></header>
                   <div className="day-sessions">
-                    {sessions.map((session) => <div className={session.status} key={session.shortName}><b>{session.shortName}</b><span>{session.name}</span><small>{session.startsAt}</small><em>{session.status === "done" ? "완료" : session.status === "live" ? "LIVE" : "예정"}</em></div>)}
+                    {sessions.map((session) => <div className={session.status} key={session.shortName}><b>{session.shortName}</b><span>{session.name}</span><small>{session.startsAt}</small><em>{session.status === "live" ? "LIVE" : session.status === "done" ? "완료" : currentTime > 0 && sessionTime(session.startsAt) < currentTime ? "시간 경과" : "예정"}</em></div>)}
                   </div>
                   <p>{day === "금요일" ? "연습주행 페이스, 셋업 변화와 타이어 롱런을 확인합니다." : day === "토요일" ? "마지막 연습주행과 예선 결과, 결승 그리드를 정리합니다." : "레이스 결과, 전략, 타이어와 경기 후 반응을 함께 확인합니다."}</p>
                 </article>
