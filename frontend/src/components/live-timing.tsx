@@ -111,6 +111,7 @@ export function LiveTiming({ event }: { event: EventDetail }) {
           <div className="live-driver-name"><i /><strong>{driver.code}</strong><small>{driver.team}</small></div>
           <time>{driver.lastLap}</time><time>{driver.bestLap}</time>
           <em>{driver.inPit ? "PIT" : driver.interval}</em><em>{driver.retired ? "OUT" : driver.gap}</em>
+          <div className="live-mobile-metrics"><span>최근 {driver.lastLap || "—"}</span><span>최고 {driver.bestLap || "—"}</span><span>간격 {driver.inPit ? "PIT" : driver.interval || "—"}</span></div>
           <div className="mini-sector-dashboard" aria-label={`${driver.code} 미니섹터와 섹터 시간`}>
             {[0, 1, 2].map((index) => <div className="mini-sector-group" key={index} aria-label={`${index + 1}섹터: ${driver.currentSectors?.[index] && driver.currentSectors[index] !== "—" ? driver.currentSectors[index] : "시간 미제공"}, ${driver.miniSectors?.[index]?.length ? "구간 상태 수신" : "구간 상태 미제공"}`}>
               <div className="mini-sector-bars" aria-label={`${index + 1}섹터 구간 상태`}>

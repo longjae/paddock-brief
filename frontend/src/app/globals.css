@@ -585,6 +585,7 @@ footer { display: flex; justify-content: space-between; padding: 20px 2px 34px; 
 .live-tyre-ring.soft { --compound-colour: #ed4254; }.live-tyre-ring.medium { --compound-colour: #ffbc00; }.live-tyre-ring.hard { --compound-colour: #eff2f4; }.live-tyre-ring.intermediate { --compound-colour: #3bd679; }.live-tyre-ring.wet { --compound-colour: #4f98ff; }
 .live-tyre-usage { display: flex; flex-direction: column; gap: 2px; min-width: 0; white-space: nowrap; }
 .live-tyre-usage b { color: #f5f6fa; font: 800 10px var(--font-mono); }.live-tyre-usage small { color: #b8bfce; font: 700 9px var(--font-mono); }
+.live-mobile-metrics { display: none; }
 
 @media (max-width: 1320px) {
   .live-shell .live-grid { grid-template-columns: minmax(0, 1fr); height: auto; }
@@ -620,12 +621,13 @@ footer { display: flex; justify-content: space-between; padding: 20px 2px 34px; 
   .live-shell .live-tower { overflow-x: hidden; }
   .live-shell .live-tower-head { display: none; }
   .live-shell .live-tower-list { min-width: 0; width: 100%; }
-  .live-shell .live-tower-list > article { grid-template-columns: 24px minmax(0, 1fr) 82px; grid-template-rows: auto auto; gap: 5px 6px; min-height: 78px; padding: 7px 2px; }
+  .live-shell .live-tower-list > article { grid-template-columns: 24px minmax(0, 1fr) 82px; grid-template-rows: auto auto auto; gap: 5px 6px; min-height: 94px; padding: 7px 2px; }
   .live-shell .live-tower-list article > b { grid-column: 1; grid-row: 1; }
   .live-shell .live-tower-list article > .live-driver-name { grid-column: 2; grid-row: 1; }
   .live-shell .live-tower-list article > :is(time, em) { display: none; }
   .live-shell .live-tower-list article > .mini-sector-dashboard { grid-column: 2 / 4; grid-row: 2; }
   .live-shell .live-tower-list article > .live-tyre-dashboard { grid-column: 3; grid-row: 1; }
+  .live-shell .live-tower-list article > .live-mobile-metrics { grid-column: 2 / 4; grid-row: 3; display: flex; flex-wrap: wrap; gap: 5px 12px; color: var(--muted); font: 700 10px var(--font-mono); }
   .live-shell .mini-sector-time { font-size: 11px; }
   .live-shell .live-tyre-usage :is(b, small) { font-size: 9px; }
 }
