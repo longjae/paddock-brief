@@ -511,11 +511,10 @@ export function Dashboard({
           <span>Paddock Brief</span>
         </Link>
         <nav aria-label="주요 메뉴">
-          <Link className={activeSection === "weekend" ? "active" : ""} href={pageHref("weekend", event.slug)}>Weekend</Link>
+          <Link className={activeSection === "weekend" || activeSection === "race-centre" ? "active" : ""} href={pageHref("weekend", event.slug)}>Weekend</Link>
           <Link className={activeSection === "interviews" ? "active" : ""} href={pageHref("interviews", event.slug, interviewSection)}>Interviews</Link>
           <Link className={activeSection === "championship" ? "active" : ""} href={pageHref("championship", event.slug)}>Championship</Link>
           <Link className={activeSection === "live" ? "active" : ""} href={pageHref("live", event.slug)}>Live</Link>
-          <Link className={activeSection === "race-centre" ? "active" : ""} href={pageHref("race-centre", event.slug)}>Race centre</Link>
           <Link className={activeSection === "glossary" ? "active" : ""} href={pageHref("glossary", event.slug)}>F1 용어집</Link>
         </nav>
         <label className="event-select-wrap"><span>{event.season} 시즌</span><select className="event-select" aria-label="그랑프리 선택" value={event.slug} onChange={(change) => router.push(pageHref(activeSection, change.target.value, interviewSection))}>
@@ -538,6 +537,13 @@ export function Dashboard({
           <div className="track-meta"><b>{event.circuit.toUpperCase()}</b><small>{event.country.toUpperCase()} · TRACK MAP</small></div>
         </div>
       </section>
+
+      {(activeSection === "weekend" || activeSection === "race-centre") && (
+        <nav className="weekend-subnav" aria-label="위켄드 메뉴">
+          <Link className={activeSection === "weekend" ? "active" : ""} href={pageHref("weekend", event.slug)} aria-current={activeSection === "weekend" ? "page" : undefined}>위켄드 가이드</Link>
+          <Link className={activeSection === "race-centre" ? "active" : ""} href={pageHref("race-centre", event.slug)} aria-current={activeSection === "race-centre" ? "page" : undefined}>레이스 센터</Link>
+        </nav>
+      )}
 
       {activeSection === "weekend" && (
         <section className="section-page weekend-page" id="weekend">
