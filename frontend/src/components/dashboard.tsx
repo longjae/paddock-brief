@@ -30,6 +30,22 @@ export type InterviewSection = "press" | "teams" | "drivers" | "videos" | "media
 type WeekendDay = "금요일" | "토요일" | "일요일";
 
 const WEEKEND_DAYS: WeekendDay[] = ["금요일", "토요일", "일요일"];
+const GP_KOREAN_KEYWORDS: Record<string, string[]> = {
+  australian: ["호주", "멜버른"], chinese: ["중국", "상하이"], japanese: ["일본", "스즈카"], miami: ["마이애미"],
+  canadian: ["캐나다", "몬트리올"], monaco: ["모나코"], barcelona: ["바르셀로나"], austrian: ["오스트리아", "슈필베르크"],
+  british: ["영국", "실버스톤"], belgian: ["벨기에", "스파"], hungarian: ["헝가리", "헝가로링"], dutch: ["네덜란드", "잔드보르트"],
+  italian: ["이탈리아", "몬차"], spanish: ["스페인", "마드리드"], azerbaijan: ["아제르바이잔", "바쿠"],
+  bahrain: ["바레인", "말레이시아", "세팡"], singapore: ["싱가포르", "마리나베이"], "united-states": ["미국", "오스틴", "COTA"],
+  "mexico-city": ["멕시코"], brazilian: ["브라질", "상파울루", "인터라고스"], "las-vegas": ["라스베이거스", "라스베가스"],
+  qatar: ["카타르", "루사일"], "abu-dhabi": ["아부다비", "야스마리나"],
+};
+
+function articleMentionsEvent(article: NewsArticle, event: EventDetail): boolean {
+  const slug = event.slug.replace(/^\d{4}-/, "");
+  const aliases = [event.country, event.circuit, event.name.replace(/ grand prix.*$/i, ""), slug.replaceAll("-", " "), ...(GP_KOREAN_KEYWORDS[slug] ?? [])];
+  const content = [article.title, article.summary, ...article.tags].join(" ").toLocaleLowerCase();
+  return aliases.some((alias) => alias.length >= 3 && content.includes(alias.toLocaleLowerCase()));
+}
 
 function pageHref(section: MainSection, eventSlug?: string, interviewView: InterviewSection = "press"): string {
   const prefix = eventSlug ? `/races/${eventSlug}` : "";
@@ -497,7 +513,7 @@ export function Dashboard({
   const pressConferenceNews = event.news.filter((article) =>
     article.tags.some((tag) => tag.includes("기자회견")) || article.title.includes("기자회견") || article.title.includes("프레스 컨퍼런스")
   );
-  const weekendNews = event.news.filter((article) => article.category !== "interview");
+  const weekendNews = event.news.filter((article) => article.category !== "interview" && articleMentionsEvent(article, event));
   const recentReports = newestFirst(weekendNews);
   const candidateReports = recentReports.filter((article) =>
     !/베팅|배당|판타지|오늘의 F1 역사/.test(article.title) &&
@@ -581,9 +597,9 @@ export function Dashboard({
           </div>
           <section className={`brief-overview ${hasFreshReports ? "fresh" : "archive"}`} aria-labelledby="brief-overview-title">
             <div className="brief-overview-heading"><div><p className="eyebrow">PADDOCK BRIEF</p><h2 id="brief-overview-title">{hasTodayReports ? "오늘 달라진 이야기" : hasFreshReports ? "최근 보도" : "지난 보도"}</h2></div><span>{latestReport ? `마지막 발행 ${publishedStamp(latestReport.publishedAt)} · ${reportAge(latestReport.publishedAt, currentTime)}` : "게시된 보도 없음"}</span></div>
-            {!hasFreshReports && latestReport && <p className="brief-stale-note">최근 48시간 안에 발행된 보도가 없습니다. 아래 내용은 지난 브리핑이며, 현재 경기 상황과 구분해 읽어 주세요.</p>}
+            {!hasFreshReports && latestReport && <p className="brief-stale-note">이 GP와 직접 관련된 보도가 최근 48시간 안에 발행되지 않았습니다. 아래 내용은 지난 브리핑입니다.</p>}
             {leadReports.length > 0 ? <div className="brief-leads">{leadReports.map((article, index) => <article key={article.id}>
-              <div className="brief-lead-meta"><span>{String(index + 1).padStart(2, "0")} · {article.outlet} · {newsCategoryLabel(article.category)}</span><time dateTime={article.publishedAt ?? undefined}>{publishedStamp(article.publishedAt)} · {reportAge(article.publishedAt, currentTime)}</time></div>
+              <div className="brief-lead-meta"><span>{String(index + 1).padStart(2, "0")} · {article.outlet} · {newsCategoryLabel(article.category)}</span><time dateTime={article.publishedAt ?? undefined}>발행 {publishedStamp(article.publishedAt)} · {reportAge(article.publishedAt, currentTime)}</time></div>
               <h3>{article.title}</h3>
               <p className="brief-short"><b>30초 요약 · 보도된 내용</b>{shortBrief(article.summary)}</p>
               <dl><div><dt>편집 판단</dt><dd>{article.category === "analysis" ? "원문의 분석을 요약한 글입니다. 별도 편집 판단은 아직 없습니다." : "이 보도에 대한 별도 편집 판단은 아직 없습니다."}</dd></div><div><dt>다음 확인</dt><dd>{nextSession ? `${nextSession.name} 이후 새 자료` : "공식 발표 또는 후속 보도 공개 시"}</dd></div></dl>

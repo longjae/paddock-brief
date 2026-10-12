@@ -583,7 +583,7 @@ footer { display: flex; justify-content: space-between; padding: 20px 2px 34px; 
 .live-tyre-usage { display: flex; flex-direction: column; gap: 2px; min-width: 0; white-space: nowrap; }
 .live-tyre-usage b { color: #f5f6fa; font: 800 10px var(--font-mono); }.live-tyre-usage small { color: #b8bfce; font: 700 9px var(--font-mono); }
 
-@media (max-width: 1200px) {
+@media (max-width: 1320px) {
   .live-shell .live-grid { grid-template-columns: minmax(0, 1fr); height: auto; }
   .live-shell .live-tower { height: min(62dvh, 680px); }
   .live-shell .live-side-column { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: minmax(0, 280px); }

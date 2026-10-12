@@ -101,7 +101,7 @@ export function LiveTiming({ event }: { event: EventDetail }) {
     <div className="live-grid">
       <section className="panel live-tower"><header><div><p className="eyebrow">TIMING TOWER</p><h3>실시간 순위</h3></div><span>{snapshot?.drivers.length ?? 0} DRIVERS</span></header>
         <div className="live-sector-meta"><strong>타이밍 · 미니섹터</strong><p className="mini-sector-legend"><span className="yellow" />일반 기록 <span className="green" />개인 최고 <span className="purple" />전체 최고 <span className="unknown" />상태 없음</p></div>
-        <p className="mini-sector-help">막대 색은 구간 기록 상태이고, 아래 숫자는 섹터 시간입니다. 회색은 원본 피드에 상태가 없는 구간입니다.{snapshot?.session.remaining === "00:00:00" ? " 현재는 종료된 세션의 마지막 수신값을 보여줍니다." : ""}</p>
+        <p className="mini-sector-help">막대 상태와 섹터 시간은 별도 신호입니다. 한쪽만 들어올 수 있습니다. 회색 막대는 구간 상태 미제공, ‘—’는 섹터 시간 미제공입니다.{snapshot?.session.remaining === "00:00:00" ? " 현재는 종료된 세션의 마지막 수신값을 보여줍니다." : ""}</p>
         <div className="live-tower-head"><span>POS</span><span>DRIVER</span><span>LAST</span><span>BEST</span><span>INTERVAL</span><span>GAP</span><span>MINI SECTORS · S1 / S2 / S3</span><span>TYRE / STINT</span></div><div className="live-tower-list">
         {!snapshot?.drivers.length && <p className="empty-state">세션이 시작되면 실시간 순위가 표시됩니다. 현재는 라이브 수집기 연결을 기다리고 있습니다.</p>}
         {snapshot?.drivers.map((driver) => <article className={`${driver.inPit ? "in-pit" : ""} ${driver.retired ? "retired" : ""}`} key={driver.number} style={{ "--driver-colour": driver.colour } as React.CSSProperties}>
@@ -110,11 +110,11 @@ export function LiveTiming({ event }: { event: EventDetail }) {
           <time>{driver.lastLap}</time><time>{driver.bestLap}</time>
           <em>{driver.inPit ? "PIT" : driver.interval}</em><em>{driver.retired ? "OUT" : driver.gap}</em>
           <div className="mini-sector-dashboard" aria-label={`${driver.code} 미니섹터와 섹터 시간`}>
-            {[0, 1, 2].map((index) => <div className="mini-sector-group" key={index}>
+            {[0, 1, 2].map((index) => <div className="mini-sector-group" key={index} aria-label={`${index + 1}섹터: ${driver.currentSectors?.[index] && driver.currentSectors[index] !== "—" ? driver.currentSectors[index] : "시간 미제공"}, ${driver.miniSectors?.[index]?.length ? "구간 상태 수신" : "구간 상태 미제공"}`}>
               <div className="mini-sector-bars" aria-label={`${index + 1}섹터 구간 상태`}>
-                {driver.miniSectors?.[index]?.length ? driver.miniSectors[index].map((colour, segment) => <span className={colour} key={segment} title={`${index + 1}섹터 ${segment + 1}구간: ${colour}`} />) : <span className="unknown" title="상태 없음" />}
+                {driver.miniSectors?.[index]?.length ? driver.miniSectors[index].map((colour, segment) => <span className={colour} key={segment} title={`${index + 1}섹터 ${segment + 1}구간: ${colour === "unknown" ? "피드 상태 미제공" : colour}`} />) : <span className="unknown" title="구간 상태 미제공" />}
               </div>
-              <span className={`mini-sector-time ${driver.sectorFlags?.[index]?.overallFastest ? "purple" : driver.sectorFlags?.[index]?.personalFastest ? "green" : ""}`}>{driver.currentSectors?.[index] || "—"}</span>
+              <span className={`mini-sector-time ${driver.sectorFlags?.[index]?.overallFastest ? "purple" : driver.sectorFlags?.[index]?.personalFastest ? "green" : ""}`} title={driver.currentSectors?.[index] && driver.currentSectors[index] !== "—" ? `${index + 1}섹터 ${driver.currentSectors[index]}` : `${index + 1}섹터 시간 미제공`}>{driver.currentSectors?.[index] || "—"}</span>
             </div>)}
           </div>
           <div className="live-tyre-dashboard" title={(driver.tyreHistory ?? []).map((tyre) => `${tyre.compound} ${tyre.laps}랩`).join(" → ")} aria-label={`${driver.compound} 타이어, ${driver.stint || 0}번째 스틴트, ${driver.tyreAge}랩 사용`}>
