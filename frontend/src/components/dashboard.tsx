@@ -34,15 +34,16 @@ const GP_KOREAN_KEYWORDS: Record<string, string[]> = {
   australian: ["호주", "멜버른"], chinese: ["중국", "상하이"], japanese: ["일본", "스즈카"], miami: ["마이애미"],
   canadian: ["캐나다", "몬트리올"], monaco: ["모나코"], barcelona: ["바르셀로나"], austrian: ["오스트리아", "슈필베르크"],
   british: ["영국", "실버스톤"], belgian: ["벨기에", "스파"], hungarian: ["헝가리", "헝가로링"], dutch: ["네덜란드", "잔드보르트"],
-  italian: ["이탈리아", "몬차"], spanish: ["스페인", "마드리드"], azerbaijan: ["아제르바이잔", "바쿠"],
-  bahrain: ["바레인", "말레이시아", "세팡"], singapore: ["싱가포르", "마리나베이"], "united-states": ["미국", "오스틴", "COTA"],
+  italian: ["이탈리아", "몬차"], spanish: ["마드리드"], azerbaijan: ["아제르바이잔", "바쿠"],
+  bahrain: ["바레인", "말레이시아", "세팡"], singapore: ["싱가포르", "마리나베이"], "united-states": ["미국 그랑프리", "미국 GP", "오스틴", "COTA"],
   "mexico-city": ["멕시코"], brazilian: ["브라질", "상파울루", "인터라고스"], "las-vegas": ["라스베이거스", "라스베가스"],
   qatar: ["카타르", "루사일"], "abu-dhabi": ["아부다비", "야스마리나"],
 };
 
 function articleMentionsEvent(article: NewsArticle, event: EventDetail): boolean {
   const slug = event.slug.replace(/^\d{4}-/, "");
-  const aliases = [event.country, event.circuit, event.name.replace(/ grand prix.*$/i, ""), slug.replaceAll("-", " "), ...(GP_KOREAN_KEYWORDS[slug] ?? [])];
+  const sharedCountry = ["United States", "Spain"].includes(event.country);
+  const aliases = [...(sharedCountry ? [event.name] : [event.country, event.name.replace(/ grand prix.*$/i, ""), slug.replaceAll("-", " ")]), event.circuit, ...(GP_KOREAN_KEYWORDS[slug] ?? [])];
   const content = [article.title, article.summary, ...article.tags].join(" ").toLocaleLowerCase();
   return aliases.some((alias) => alias.length >= 3 && content.includes(alias.toLocaleLowerCase()));
 }
