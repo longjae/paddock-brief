@@ -369,6 +369,8 @@ footer { display: flex; justify-content: space-between; padding: 20px 2px 34px; 
 .mini-sector-legend span { width: 7px; height: 7px; margin-left: 7px; border-radius: 2px; }
 .mini-sector-legend span:first-child { margin-left: 0; }
 .mini-sector-legend .yellow { background: #e7bc34; }.mini-sector-legend .green { background: #39c979; }.mini-sector-legend .purple { background: #ad77ec; }
+.mini-sector-legend .unknown { background: #303735; }
+.mini-sector-help { margin: 0; padding: 8px 16px; color: #9ca39f; background: #111514; border-bottom: 1px solid var(--line); font-size: 10px; line-height: 1.5; }
 .live-view-tabs button { padding: 7px 12px; color: var(--muted); background: transparent; border: 1px solid transparent; border-radius: 4px; cursor: pointer; }
 .live-view-tabs button.active, .live-view-tabs button:hover { color: #fff; background: #262a29; border-color: #454a47; }
 .live-tower-head.view-mini, .live-tower-list.view-mini > article { grid-template-columns: 34px minmax(110px,1fr) repeat(3,minmax(90px,1fr)); }
