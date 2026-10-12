@@ -102,7 +102,7 @@ export function LiveTiming({ event }: { event: EventDetail }) {
     </div>
     <div className="live-grid">
       <section className="panel live-tower"><header><div><p className="eyebrow">TIMING TOWER</p><h3>실시간 순위</h3></div><span>{snapshot?.drivers.length ?? 0} DRIVERS</span></header>
-        <div className="live-sector-meta"><strong>타이밍 · 미니섹터</strong><p className="mini-sector-legend"><span className="yellow" />일반 기록 <span className="green" />개인 최고 <span className="purple" />전체 최고 <span className="unknown" />상태 없음</p></div>
+        <div className="live-sector-meta"><strong>타이밍 · 미니섹터</strong><p className="mini-sector-legend"><span className="yellow" />일반 기록 <span className="green" />개인 최고 <span className="purple" />전체 최고 <span className="pit" />피트 <span className="unknown" />미제공</p></div>
         <p className="mini-sector-help">막대 상태와 섹터 시간은 별도 신호입니다. 한쪽만 들어올 수 있습니다. 회색 막대는 구간 상태 미제공, ‘—’는 섹터 시간 미제공입니다.{snapshot?.session.remaining === "00:00:00" ? " 현재는 종료된 세션의 마지막 수신값을 보여줍니다." : ""}</p>
         <div className="live-tower-head"><span>POS</span><span>DRIVER</span><span>LAST</span><span>BEST</span><span>INTERVAL</span><span>GAP</span><span>MINI SECTORS · S1 / S2 / S3</span><span>TYRE / STINT</span></div><div className="live-tower-list">
         {!snapshot?.drivers.length && <p className="empty-state">세션이 시작되면 실시간 순위가 표시됩니다. 현재는 라이브 수집기 연결을 기다리고 있습니다.</p>}
