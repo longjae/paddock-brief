@@ -323,6 +323,7 @@ class LiveTimingService:
                     "lastLap": (line.get("LastLapTime") or {}).get("Value", "—"),
                     "bestLap": (line.get("BestLapTime") or {}).get("Value", "—"),
                     "sectors": [(sector.get("Value") or "—") for sector in sectors[:3]],
+                    "currentSectors": [(sector.get("Value") or "—") for sector in timing_sectors[:3]],
                     "sectorFlags": [
                         {"personalFastest": _flag(sector.get("PersonalFastest")), "overallFastest": _flag(sector.get("OverallFastest"))}
                         for sector in timing_sectors[:3]
@@ -332,6 +333,7 @@ class LiveTimingService:
                     "tyreAge": int(stint.get("TotalLaps") or 0),
                     "tyreNew": _flag(current.get("New", stint.get("New"))),
                     "stint": len(stints),
+                    "pitStops": int(line["NumberOfPitStops"]) if str(line.get("NumberOfPitStops", "")).isdigit() else None,
                     "tyreHistory": [
                         {
                             "compound": str(item.get("Compound") or "UNKNOWN").upper(),

@@ -120,7 +120,7 @@ def test_mini_sector_colours_follow_timing_segments() -> None:
     service.topics = {
         "SessionInfo": {"Meeting": {"Name": "Test Grand Prix"}},
         "DriverList": {"1": {"Tla": "TST"}},
-        "TimingData": {"Lines": {"1": {"Position": "1", "Sectors": {
+        "TimingData": {"Lines": {"1": {"Position": "1", "NumberOfPitStops": "1", "Sectors": {
             "0": {"Value": "30.100", "Segments": {"0": {"Status": 2048}, "1": {"Status": 2049}}},
             "1": {"Segments": [{"Status": 2051}, {"Status": 2064}]},
             "2": {"Segments": {"0": {"Status": 9999}}},
@@ -129,3 +129,5 @@ def test_mini_sector_colours_follow_timing_segments() -> None:
     assert service.snapshot("2026-test")["drivers"][0]["miniSectors"] == [
         ["yellow", "green"], ["purple", "pit"], ["unknown"],
     ]
+    assert service.snapshot("2026-test")["drivers"][0]["currentSectors"] == ["30.100", "—", "—"]
+    assert service.snapshot("2026-test")["drivers"][0]["pitStops"] == 1

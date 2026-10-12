@@ -549,8 +549,8 @@ footer { display: flex; justify-content: space-between; padding: 20px 2px 34px; 
 .live-shell .live-tower { display: flex; flex-direction: column; min-height: 0; overflow-x: auto; overflow-y: hidden; }
 .live-shell .live-tower-list { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 0; }
 .live-shell .live-tower-head, .live-shell .live-tower-list { min-width: 760px; }
-.live-shell .live-tower-head, .live-shell .live-tower-list > article { grid-template-columns: 28px minmax(84px, 1fr) 88px 60px 60px 56px 56px repeat(3, minmax(60px, .65fr)); gap: 6px; }
-.live-shell .live-tower-list > article { min-height: 32px; }
+.live-shell .live-tower-head, .live-shell .live-tower-list > article { grid-template-columns: 28px minmax(80px, 1fr) 60px 60px 50px 50px minmax(260px, 32%) 105px; gap: 6px; }
+.live-shell .live-tower-list > article { min-height: 46px; }
 .live-shell .live-tower-list article > div i { height: 20px; }
 .live-shell .live-side-column { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); min-height: 0; }
 .live-shell .live-feed-panel { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
@@ -560,6 +560,19 @@ footer { display: flex; justify-content: space-between; padding: 20px 2px 34px; 
 .live-tyre-cell > small { color: var(--muted); font: 800 8px var(--font-mono); white-space: nowrap; }
 .live-tyre-cell .live-compound { padding: 3px 5px; }
 .live-shell .mini-sector span { height: 10px; min-width: 2px; }
+.mini-sector-dashboard { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: center; gap: 8px; min-width: 0; }
+.mini-sector-group { display: grid; grid-template-rows: 10px 16px; gap: 3px; min-width: 0; }
+.mini-sector-bars { display: flex; gap: 2px; min-width: 0; }
+.mini-sector-bars span { flex: 1 1 0; min-width: 2px; border-radius: 2px; background: #19212d; }
+.mini-sector-bars span.yellow { background: #ffbc00; }.mini-sector-bars span.green { background: #3bd679; }.mini-sector-bars span.purple { background: #ad77ec; }.mini-sector-bars span.pit { background: #70839a; }
+.mini-sector-time { overflow: hidden; color: #ffbc00; font: 800 12px var(--font-mono); text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.mini-sector-time.green { color: #3bd679; }.mini-sector-time.purple { color: #ad77ec; }
+.live-tyre-dashboard { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.live-tyre-ring { --compound-colour: #a8adb5; flex: 0 0 34px; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: conic-gradient(var(--compound-colour) 0deg 310deg, #17202c 310deg 360deg); }
+.live-tyre-ring b { display: grid; place-items: center; width: 24px; height: 24px; color: #fff; background: #111722; border-radius: 50%; font: 900 16px var(--font-mono); }
+.live-tyre-ring.soft { --compound-colour: #ed4254; }.live-tyre-ring.medium { --compound-colour: #ffbc00; }.live-tyre-ring.hard { --compound-colour: #eff2f4; }.live-tyre-ring.intermediate { --compound-colour: #3bd679; }.live-tyre-ring.wet { --compound-colour: #4f98ff; }
+.live-tyre-usage { display: flex; flex-direction: column; gap: 2px; min-width: 0; white-space: nowrap; }
+.live-tyre-usage b { color: #f5f6fa; font: 800 10px var(--font-mono); }.live-tyre-usage small { color: #b8bfce; font: 700 9px var(--font-mono); }
 
 @media (max-width: 1200px) {
   .live-shell .live-grid { grid-template-columns: minmax(0, 1fr); height: auto; }
