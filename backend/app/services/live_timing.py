@@ -69,6 +69,20 @@ def _items(value: Any) -> list[dict[str, Any]]:
     return []
 
 
+def _mini_sectors(sectors: Any) -> list[list[str]]:
+    """Keep only the public timing colours; unknown codes remain unavailable."""
+    colours = {2048: "yellow", 2049: "green", 2051: "purple", 2064: "pit"}
+    result: list[list[str]] = []
+    for sector in _items(sectors)[:3]:
+        segments = _items(sector.get("Segments", {}))
+        result.append([
+            colours.get(int(segment.get("Status") or 0), "unknown")
+            if str(segment.get("Status") or 0).isdigit() else "unknown"
+            for segment in segments
+        ])
+    return result
+
+
 def _seconds(value: Any) -> float | None:
     text = str(value or "").strip()
     if not text or text == "—":
@@ -313,6 +327,7 @@ class LiveTimingService:
                         {"personalFastest": _flag(sector.get("PersonalFastest")), "overallFastest": _flag(sector.get("OverallFastest"))}
                         for sector in timing_sectors[:3]
                     ],
+                    "miniSectors": _mini_sectors(line.get("Sectors", {})),
                     "compound": compound,
                     "tyreAge": int(stint.get("TotalLaps") or 0),
                     "tyreNew": _flag(current.get("New", stint.get("New"))),

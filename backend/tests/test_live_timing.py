@@ -113,3 +113,19 @@ def test_team_radio_audio_url_is_restricted_to_official_paths() -> None:
         team_radio_audio_url("https://example.com/radio.mp3", session_path)
     with pytest.raises(ValueError):
         team_radio_audio_url(path, "../../private/")
+
+
+def test_mini_sector_colours_follow_timing_segments() -> None:
+    service = LiveTimingService(Settings(app_use_sample_data=True))
+    service.topics = {
+        "SessionInfo": {"Meeting": {"Name": "Test Grand Prix"}},
+        "DriverList": {"1": {"Tla": "TST"}},
+        "TimingData": {"Lines": {"1": {"Position": "1", "Sectors": {
+            "0": {"Value": "30.100", "Segments": {"0": {"Status": 2048}, "1": {"Status": 2049}}},
+            "1": {"Segments": [{"Status": 2051}, {"Status": 2064}]},
+            "2": {"Segments": {"0": {"Status": 9999}}},
+        }}}},
+    }
+    assert service.snapshot("2026-test")["drivers"][0]["miniSectors"] == [
+        ["yellow", "green"], ["purple", "pit"], ["unknown"],
+    ]

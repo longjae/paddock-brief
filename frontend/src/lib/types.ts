@@ -137,6 +137,7 @@ export type LiveTimingDriver = {
   position: number; number: string; code: string; name: string; team: string; colour: string;
   gap: string; interval: string; lastLap: string; bestLap: string; sectors: string[];
   sectorFlags: Array<{ personalFastest: boolean; overallFastest: boolean }>;
+  miniSectors?: Array<Array<"yellow" | "green" | "purple" | "pit" | "unknown">>;
   compound: string; tyreAge: number; tyreNew: boolean; stint: number;
   tyreHistory: Array<{ compound: string; laps: number; new: boolean }>;
   inPit: boolean; retired: boolean;
