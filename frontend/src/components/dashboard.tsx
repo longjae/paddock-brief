@@ -609,10 +609,10 @@ export function Dashboard({
             <div><p className="eyebrow">선택한 GP 상태</p><strong>{nextSession ? `다음 세션 · ${nextSession.name}` : "이 GP의 세션 일정이 지났습니다"}</strong><small>{nextSession ? `${nextSession.startsAt} KST 예정` : "아래 일정과 경기 자료는 선택한 GP의 기록입니다."}</small></div>
             {!nextSession && nextEvent && <Link href={pageHref("weekend", nextEvent.slug)}>다음 경기 · {nextEvent.name} →</Link>}
           </div>
-          <section className={`brief-overview ${hasFreshReports ? "fresh" : "archive"}`} aria-labelledby="brief-overview-title">
-            <div className="brief-overview-heading"><div><p className="eyebrow">PADDOCK BRIEF</p><h2 id="brief-overview-title">{hasTodayReports ? "오늘 달라진 이야기" : hasFreshReports ? "최근 보도" : "지난 보도"}</h2></div><span>{latestReport ? `마지막 ${publicationLabel(latestReport.publishedAt, currentTime)}` : "게시된 보도 없음"}</span></div>
+          <section className={`brief-overview ${!latestReport ? "empty" : hasFreshReports ? "fresh" : "archive"}`} aria-labelledby="brief-overview-title">
+            <div className="brief-overview-heading"><div><p className="eyebrow">PADDOCK BRIEF</p><h2 id="brief-overview-title">{!latestReport ? "보도 대기" : hasTodayReports ? "오늘 달라진 이야기" : hasFreshReports ? "최근 보도" : "지난 보도"}</h2></div><span>{latestReport ? `마지막 ${publicationLabel(latestReport.publishedAt, currentTime)}` : "게시된 보도 없음"}</span></div>
             {latestReport && <p className="brief-source-note">최신성은 원문 발행일 기준입니다. 원문 수정 시각은 현재 수집되지 않습니다.</p>}
-            {!hasFreshReports && latestReport && <p className="brief-stale-note">이 GP와 직접 관련된 보도가 최근 48시간 안에 발행되지 않았습니다. 아래 내용은 지난 브리핑입니다.</p>}
+            {!hasFreshReports && latestReport && <p className="brief-stale-note">{Number.isFinite(publishedTime(latestReport.publishedAt)) ? "이 GP와 직접 관련된 보도가 최근 48시간 안에 발행되지 않았습니다. 아래 내용은 지난 브리핑입니다." : "원문 발행일을 확인할 수 없습니다. 아래 내용을 오늘의 브리핑으로 보지 마세요."}</p>}
             {leadReports.length > 0 ? <div className="brief-leads">{leadReports.map((article, index) => <article key={article.id}>
               <div className="brief-lead-meta"><span>{String(index + 1).padStart(2, "0")} · {article.outlet} · {newsCategoryLabel(article.category)}</span><time dateTime={article.publishedAt ?? undefined}>{publicationLabel(article.publishedAt, currentTime)}</time></div>
               <h3>{article.title}</h3>
