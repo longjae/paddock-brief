@@ -25,7 +25,7 @@ type ModalContent = {
   detailLabel: string;
 };
 
-export type MainSection = "weekend" | "interviews" | "championship" | "live" | "race-centre" | "glossary";
+export type MainSection = "weekend" | "interviews" | "championship" | "live" | "glossary";
 export type InterviewSection = "press" | "teams" | "drivers" | "videos" | "media";
 type WeekendDay = "금요일" | "토요일" | "일요일";
 
@@ -294,7 +294,6 @@ export function Dashboard({
   const [currentTime, setCurrentTime] = useState(0);
   const activeSection = initialSection;
   const [interviewSection, setInterviewSection] = useState<InterviewSection>(initialInterviewSection);
-  const [raceDay, setRaceDay] = useState<WeekendDay>("일요일");
   const [championship, setChampionship] = useState<ChampionshipSnapshot | null>(null);
   const [championshipLoading, setChampionshipLoading] = useState(true);
   const [glossaryQuery, setGlossaryQuery] = useState("");
@@ -481,7 +480,6 @@ export function Dashboard({
   const driverNewsByDate = groupByPublishedDay(driverNews);
   const driverTeamContentByDate = groupByPublishedDay(driverTeamContent);
   const driverInterviewItemsByDate = groupByPublishedDay(driverInterviewItems);
-  const raceDaySessions = event.sessions.filter((session) => sessionDay(session) === raceDay);
   const officialRaceHub = `https://www.formula1.com/en/racing/${event.season}/${event.slug.replace(`${event.season}-`, "")}`;
   const visibleGlossary = useMemo(() => {
     const query = glossaryQuery.trim().toLowerCase();
@@ -511,7 +509,7 @@ export function Dashboard({
           <span>Paddock Brief</span>
         </Link>
         <nav aria-label="주요 메뉴">
-          <Link className={activeSection === "weekend" || activeSection === "race-centre" ? "active" : ""} href={pageHref("weekend", event.slug)}>Weekend</Link>
+          <Link className={activeSection === "weekend" ? "active" : ""} href={pageHref("weekend", event.slug)}>Weekend</Link>
           <Link className={activeSection === "interviews" ? "active" : ""} href={pageHref("interviews", event.slug, interviewSection)}>Interviews</Link>
           <Link className={activeSection === "championship" ? "active" : ""} href={pageHref("championship", event.slug)}>Championship</Link>
           <Link className={activeSection === "live" ? "active" : ""} href={pageHref("live", event.slug)}>Live</Link>
@@ -538,17 +536,10 @@ export function Dashboard({
         </div>
       </section>
 
-      {(activeSection === "weekend" || activeSection === "race-centre") && (
-        <nav className="weekend-subnav" aria-label="위켄드 메뉴">
-          <Link className={activeSection === "weekend" ? "active" : ""} href={pageHref("weekend", event.slug)} aria-current={activeSection === "weekend" ? "page" : undefined}>위켄드 가이드</Link>
-          <Link className={activeSection === "race-centre" ? "active" : ""} href={pageHref("race-centre", event.slug)} aria-current={activeSection === "race-centre" ? "page" : undefined}>레이스 센터</Link>
-        </nav>
-      )}
-
       {activeSection === "weekend" && (
         <section className="section-page weekend-page" id="weekend">
           <div className="page-heading">
-            <div><p className="eyebrow">RACE WEEKEND</p><h2>금·토·일 위켄드 가이드</h2><p>세션 일정과 해당 날짜에 공개된 레이스 자료를 하루 단위로 정리했습니다.</p></div>
+            <div><p className="eyebrow">RACE WEEKEND</p><h2>위켄드 가이드 · 레이스 센터</h2><p>세션 일정, 타이어, 경기 순위와 레이스 자료를 한곳에서 확인합니다.</p></div>
             <a href={officialRaceHub} rel="noreferrer" target="_blank">Formula 1 공식 레이스 허브 ↗</a>
           </div>
           <div className="weekend-days">
@@ -564,6 +555,35 @@ export function Dashboard({
                 </article>
               );
             })}
+          </div>
+          <div className="weekend-data-grid" id="race-centre">
+            <section className="panel timing-card">
+              <div className="section-heading compact"><div><p className="eyebrow">{raceComplete ? "RACE RESULT" : "LIVE PREVIEW"}</p><h2>레이스 센터</h2></div>{event.drivers.length > 0 && <span className="lap">{raceComplete ? "FINAL" : "LIVE"}</span>}</div>
+              <div className="timing-list">
+                {event.drivers.length === 0 && <p className="empty-state">레이스 세션이 시작되면 순위, 사용 타이어와 타이어 랩 수가 표시됩니다.</p>}
+                {event.drivers.map((driver) => (
+                  <div className="driver-row" key={driver.code}>
+                    <b className="position">{driver.position}</b>
+                    <i style={{ background: driver.colour }} />
+                    <div><b>{driver.code}</b><small>{driver.team}</small></div>
+                    <Tyre compound={driver.compound} age={driver.tyreAge} />
+                    <span className="gap">{driver.gap}</span>
+                  </div>
+                ))}
+              </div>
+              {event.drivers.length > 0 && <p className="status-line"><span /> {raceComplete ? "FINAL CLASSIFICATION" : "LIVE DATA"} <em>OpenF1</em></p>}
+            </section>
+            <div className="weekend-data-side">
+              <section className="panel tyre-card">
+                <div className="section-heading compact"><div><p className="eyebrow">PIRELLI ALLOCATION</p><h2>이번 주말 타이어</h2></div>{event.tyreSourceUrl && <a href={event.tyreSourceUrl} target="_blank" rel="noreferrer">공식 출처 ↗</a>}</div>
+                <div className="allocation">
+                  <div className="compound hard"><span>H</span><b>Hard</b><small>{event.tyreAllocation.hard}</small></div>
+                  <div className="compound medium"><span>M</span><b>Medium</b><small>{event.tyreAllocation.medium}</small></div>
+                  <div className="compound soft"><span>S</span><b>Soft</b><small>{event.tyreAllocation.soft}</small></div>
+                </div>
+              </section>
+              <div className="briefing panel"><p className="eyebrow">RACE BRIEF</p>{event.summary.map((item, index) => <p key={item}><span>0{index + 1}</span>{item}</p>)}</div>
+            </div>
           </div>
           <div className="weekend-feed panel">
             <div className="section-heading compact"><div><p className="eyebrow">DAILY REPORTS</p><h2>날짜별 레이스 자료</h2></div><span>{weekendNews.length} ARTICLES</span></div>
@@ -784,49 +804,6 @@ export function Dashboard({
       </section>}
 
       {activeSection === "live" && <LiveTiming event={event} />}
-
-      {activeSection === "race-centre" && <section className="section-page race-centre-page" id="race-centre">
-        <div className="page-heading">
-          <div><p className="eyebrow">SESSION DATA</p><h2>레이스 센터</h2><p>금·토·일 세션과 최종 순위, 타이어 정보를 날짜별로 확인합니다.</p></div>
-          <a href={officialRaceHub} rel="noreferrer" target="_blank">공식 결과와 리포트 ↗</a>
-        </div>
-        <div className="race-day-tabs" role="tablist" aria-label="레이스 위켄드 날짜 선택">
-          {WEEKEND_DAYS.map((day) => <button className={raceDay === day ? "active" : ""} key={day} onClick={() => setRaceDay(day)} role="tab" type="button">{day}<small>{event.sessions.filter((session) => sessionDay(session) === day).map((session) => session.shortName).join(" · ")}</small></button>)}
-        </div>
-        <div className="race-centre-grid">
-          <div className="race-session-column">
-            {raceDaySessions.map((session) => <article className={`panel race-session-card ${session.status}`} key={session.shortName}><span>{session.shortName}</span><div><p className="eyebrow">{raceDay} SESSION</p><h3>{session.name}</h3><small>{session.startsAt}</small></div><em>{session.status === "done" ? "SESSION COMPLETE" : session.status === "live" ? "LIVE" : "UPCOMING"}</em></article>)}
-            {raceDay === "일요일" && <div className="briefing panel"><p className="eyebrow">RACE BRIEF</p>{event.summary.map((item, index) => <p key={item}><span>0{index + 1}</span>{item}</p>)}</div>}
-          </div>
-          <aside className="sidebar">
-          <section className="panel tyre-card">
-            <div className="section-heading compact"><div><p className="eyebrow">PIRELLI ALLOCATION</p><h2>이번 주말 타이어</h2></div>{event.tyreSourceUrl && <a href={event.tyreSourceUrl} target="_blank" rel="noreferrer">공식 출처 ↗</a>}</div>
-            <div className="allocation">
-              <div className="compound hard"><span>H</span><b>Hard</b><small>{event.tyreAllocation.hard}</small></div>
-              <div className="compound medium"><span>M</span><b>Medium</b><small>{event.tyreAllocation.medium}</small></div>
-              <div className="compound soft"><span>S</span><b>Soft</b><small>{event.tyreAllocation.soft}</small></div>
-            </div>
-          </section>
-
-          <section className="panel timing-card">
-            <div className="section-heading compact"><div><p className="eyebrow">{raceComplete ? "RACE RESULT" : "LIVE PREVIEW"}</p><h2>레이스 센터</h2></div>{event.drivers.length > 0 && <span className="lap">{raceComplete ? "FINAL" : "LIVE"}</span>}</div>
-            <div className="timing-list">
-              {event.drivers.length === 0 && <p className="empty-state">레이스 세션이 시작되면 순위, 사용 타이어와 타이어 랩 수가 표시됩니다.</p>}
-              {event.drivers.map((driver) => (
-                <div className="driver-row" key={driver.code}>
-                  <b className="position">{driver.position}</b>
-                  <i style={{ background: driver.colour }} />
-                  <div><b>{driver.code}</b><small>{driver.team}</small></div>
-                  <Tyre compound={driver.compound} age={driver.tyreAge} />
-                  <span className="gap">{driver.gap}</span>
-                </div>
-              ))}
-            </div>
-            {event.drivers.length > 0 && <p className="status-line"><span /> {raceComplete ? "FINAL CLASSIFICATION" : "LIVE DATA"} <em>OpenF1</em></p>}
-          </section>
-        </aside>
-        </div>
-      </section>}
 
       {activeSection === "glossary" && <section className="section-page glossary-page" id="glossary">
         <div className="page-heading glossary-heading">

@@ -1,5 +1,5 @@
-import { Dashboard } from "@/components/dashboard";
+import { redirect } from "next/navigation";
 
 export default function RaceCentrePage() {
-  return <Dashboard initialSection="race-centre" />;
+  redirect("/weekend");
 }
