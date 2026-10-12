@@ -561,7 +561,7 @@ footer { display: flex; justify-content: space-between; padding: 20px 2px 34px; 
 .live-tyre-cell .live-compound { padding: 3px 5px; }
 .live-shell .mini-sector span { height: 10px; min-width: 2px; }
 
-@media (max-width: 980px) {
+@media (max-width: 1200px) {
   .live-shell .live-grid { grid-template-columns: minmax(0, 1fr); height: auto; }
   .live-shell .live-tower { height: min(62dvh, 680px); }
   .live-shell .live-side-column { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: minmax(0, 280px); }
