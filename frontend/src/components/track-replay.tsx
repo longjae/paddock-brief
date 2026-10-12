@@ -72,7 +72,7 @@ export function TrackReplay({ event }: { event: EventDetail }) {
       {replay?.available && <div className="track-replay-telemetry"><label>선수 <select value={replay.focusNumber} onChange={(change) => setDriverNumber(Number(change.target.value))}>{replay.positions.map((position) => { const driver = event.eventDrivers.find((item) => item.number === position.number); return <option key={position.number} value={position.number}>{driver?.code || position.code}</option>; })}</select></label>
         {replay.car ? <><b>{replay.car.speed} <small>km/h</small></b><span>{replay.car.gear} <small>GEAR</small></span><span>{replay.car.rpm.toLocaleString()} <small>RPM</small></span><span>{replay.car.throttle}% <small>THROTTLE</small></span><span>{replay.car.brake ? "ON" : "OFF"} <small>BRAKE</small></span></> : <span>차량 데이터 없음</span>}
       </div>}
-      {replay?.available && <p className="track-replay-source">기록 시각 {new Date(replay.sessionTime).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })} KST · <a href="https://openf1.org/docs/" target="_blank" rel="noreferrer">OpenF1 위치 데이터</a> · 실시간 아님</p>}
+      {replay?.available && <p className="track-replay-source">기준 시각 {new Date(replay.sessionTime).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })} KST · 약 3초 범위 · <a href="https://openf1.org/docs/" target="_blank" rel="noreferrer">OpenF1 위치 데이터</a> · 실시간 아님</p>}
     </>}
   </section>;
 }

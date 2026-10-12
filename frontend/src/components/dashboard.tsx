@@ -618,7 +618,7 @@ export function Dashboard({
               <h3>{article.title}</h3>
               <p className="brief-short"><b>30초 요약 · 보도된 내용</b>{shortBrief(article.summary)}</p>
               <dl><div><dt>편집 판단</dt><dd>{article.category === "analysis" ? "원문의 분석을 요약한 글입니다. 별도 편집 판단은 아직 없습니다." : "이 보도에 대한 별도 편집 판단은 아직 없습니다."}</dd></div><div><dt>다음 확인</dt><dd>{nextSession ? `${nextSession.name} 이후 새 자료` : "공식 발표 또는 후속 보도 공개 시"}</dd></div></dl>
-              <button onClick={() => setSelectedContent(newsModalContent(article, "var(--f1-red)"))} type="button">원문과 깊은 분석 보기 →</button>
+              <button onClick={() => setSelectedContent(newsModalContent(article, "var(--f1-red)"))} type="button">기사 상세 요약 보기 →</button>
             </article>)}</div> : <p className="brief-empty">이 GP에서 확인할 수 있는 보도가 아직 없습니다. 아래 세션 일정과 공식 레이스 허브를 확인하세요.</p>}
           </section>
           <div className="page-heading">

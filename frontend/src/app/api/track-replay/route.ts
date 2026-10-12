@@ -49,20 +49,24 @@ export async function GET(request: Request) {
       "date<": new Date(from.getTime() + seconds * 1000).toISOString(),
     });
     const [traceRows, positionRows, drivers] = await Promise.all([
-      openF1<Location[]>("location", windowParams(traceStart, 100)),
+      openF1<Location[]>("location", windowParams(traceStart, 120)),
       openF1<Location[]>("location", windowParams(sampleStart, 3)),
       openF1<Driver[]>("drivers", new URLSearchParams({ session_key: String(session.session_key) })),
     ]);
     const byDriver = new Map<number, Location>();
     for (const row of positionRows) if (Number.isFinite(row.x) && Number.isFinite(row.y)) byDriver.set(row.driver_number, row);
-    const traceDriver = traceRows.find((row) => Number.isFinite(row.x) && Number.isFinite(row.y))?.driver_number;
+    const traceCounts = new Map<number, number>();
+    for (const row of traceRows) if (Number.isFinite(row.x) && Number.isFinite(row.y)) traceCounts.set(row.driver_number, (traceCounts.get(row.driver_number) ?? 0) + 1);
+    const traceDriver = [...traceCounts].sort((a, b) => b[1] - a[1])[0]?.[0];
     const trace = traceRows.filter((row) => row.driver_number === traceDriver).filter((_, index) => index % 4 === 0).map(({ x, y }) => ({ x, y }));
     if (trace.length < 20 || byDriver.size === 0) return Response.json({ available: false, reason: "해당 시각의 위치 기록이 부족합니다." });
     const focusNumber = byDriver.has(selectedDriver) ? selectedDriver : byDriver.keys().next().value as number;
     const carRows = await openF1<CarData[]>("car_data", new URLSearchParams({
       ...Object.fromEntries(windowParams(sampleStart, 2)), driver_number: String(focusNumber),
     }));
-    const car = carRows.find((row) => row.driver_number === focusNumber) ?? null;
+    const locationTime = new Date(byDriver.get(focusNumber)!.date).getTime();
+    const car = carRows.filter((row) => row.driver_number === focusNumber)
+      .sort((a, b) => Math.abs(new Date(a.date).getTime() - locationTime) - Math.abs(new Date(b.date).getTime() - locationTime))[0] ?? null;
     const driverByNumber = new Map(drivers.map((driver) => [driver.driver_number, driver]));
     return Response.json({ available: true, sessionKey: session.session_key, sessionTime: sampleStart.toISOString(),
       trace, focusNumber, car: car ? { speed: car.speed, rpm: car.rpm, gear: car.n_gear, throttle: car.throttle, brake: car.brake, drs: car.drs } : null,
