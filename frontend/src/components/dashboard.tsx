@@ -189,6 +189,12 @@ function reportAge(value: string | null | undefined, now: number): string {
   return `${days}일 전`;
 }
 
+function publicationLabel(value: string | null | undefined, now: number): string {
+  if (!Number.isFinite(publishedTime(value))) return "발행일 미상";
+  const age = reportAge(value, now);
+  return `발행 ${publishedStamp(value)}${age ? ` · ${age}` : ""}`;
+}
+
 function sessionTime(value: string): number {
   return new Date(value.includes("T") ? value : `${value.replace(" ", "T")}+09:00`).getTime();
 }
@@ -604,10 +610,11 @@ export function Dashboard({
             {!nextSession && nextEvent && <Link href={pageHref("weekend", nextEvent.slug)}>다음 경기 · {nextEvent.name} →</Link>}
           </div>
           <section className={`brief-overview ${hasFreshReports ? "fresh" : "archive"}`} aria-labelledby="brief-overview-title">
-            <div className="brief-overview-heading"><div><p className="eyebrow">PADDOCK BRIEF</p><h2 id="brief-overview-title">{hasTodayReports ? "오늘 달라진 이야기" : hasFreshReports ? "최근 보도" : "지난 보도"}</h2></div><span>{latestReport ? `마지막 발행 ${publishedStamp(latestReport.publishedAt)} · ${reportAge(latestReport.publishedAt, currentTime)}` : "게시된 보도 없음"}</span></div>
+            <div className="brief-overview-heading"><div><p className="eyebrow">PADDOCK BRIEF</p><h2 id="brief-overview-title">{hasTodayReports ? "오늘 달라진 이야기" : hasFreshReports ? "최근 보도" : "지난 보도"}</h2></div><span>{latestReport ? `마지막 ${publicationLabel(latestReport.publishedAt, currentTime)}` : "게시된 보도 없음"}</span></div>
+            {latestReport && <p className="brief-source-note">최신성은 원문 발행일 기준입니다. 원문 수정 시각은 현재 수집되지 않습니다.</p>}
             {!hasFreshReports && latestReport && <p className="brief-stale-note">이 GP와 직접 관련된 보도가 최근 48시간 안에 발행되지 않았습니다. 아래 내용은 지난 브리핑입니다.</p>}
             {leadReports.length > 0 ? <div className="brief-leads">{leadReports.map((article, index) => <article key={article.id}>
-              <div className="brief-lead-meta"><span>{String(index + 1).padStart(2, "0")} · {article.outlet} · {newsCategoryLabel(article.category)}</span><time dateTime={article.publishedAt ?? undefined}>발행 {publishedStamp(article.publishedAt)} · {reportAge(article.publishedAt, currentTime)}</time></div>
+              <div className="brief-lead-meta"><span>{String(index + 1).padStart(2, "0")} · {article.outlet} · {newsCategoryLabel(article.category)}</span><time dateTime={article.publishedAt ?? undefined}>{publicationLabel(article.publishedAt, currentTime)}</time></div>
               <h3>{article.title}</h3>
               <p className="brief-short"><b>30초 요약 · 보도된 내용</b>{shortBrief(article.summary)}</p>
               <dl><div><dt>편집 판단</dt><dd>{article.category === "analysis" ? "원문의 분석을 요약한 글입니다. 별도 편집 판단은 아직 없습니다." : "이 보도에 대한 별도 편집 판단은 아직 없습니다."}</dd></div><div><dt>다음 확인</dt><dd>{nextSession ? `${nextSession.name} 이후 새 자료` : "공식 발표 또는 후속 보도 공개 시"}</dd></div></dl>
@@ -667,7 +674,7 @@ export function Dashboard({
               <section className="dated-group" key={day}>
                 <div className="dated-group-heading"><h3>{day}</h3><span>{articles.length}건</span></div>
                 <div className="compact-card-grid">
-                  {articles.map((article) => <button key={article.id} onClick={() => setSelectedContent(newsModalContent(article, "var(--f1-red)"))} type="button"><span>{article.outlet} · {newsCategoryLabel(article.category)} · {publishedStamp(article.publishedAt)} · {reportAge(article.publishedAt, currentTime)}</span><b>{article.title}</b><small>{article.summary}</small><em>상세 요약 보기 ↗</em></button>)}
+                  {articles.map((article) => <button key={article.id} onClick={() => setSelectedContent(newsModalContent(article, "var(--f1-red)"))} type="button"><span>{article.outlet} · {newsCategoryLabel(article.category)} · {publicationLabel(article.publishedAt, currentTime)}</span><b>{article.title}</b><small>{article.summary}</small><em>상세 요약 보기 ↗</em></button>)}
                 </div>
               </section>
             ))}

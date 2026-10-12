@@ -272,6 +272,21 @@ def test_media_articles_are_normalized() -> None:
     assert event.news[0].detailedSummary == "분석 요약"
 
 
+def test_news_collection_time_is_not_shown_as_publication_time() -> None:
+    event = EventRepository._normalize({
+        "slug": "2026-test", "season": 2026, "round": 1, "short_name": "Test Grand Prix",
+        "country": "Testland", "circuit_name": "Test Circuit", "start_at": "2026-03-01T00:00:00Z",
+        "sessions": [], "videos": [], "interviews": [], "tyre_allocations": {},
+        "event_news": [{
+            "id": "33333333-3333-3333-3333-333333333333", "category": "analysis",
+            "title": "Undated report", "source_url": "https://example.com/undated",
+            "korean_summary": "발행일이 없는 기사", "collected_at": "2026-03-02T09:00:00Z",
+            "sources": {"name": "Test Media"},
+        }],
+    })
+    assert event.news[0].publishedAt is None
+
+
 def test_event_drivers_are_normalized() -> None:
     event = EventRepository._normalize(
         {

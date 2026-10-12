@@ -199,7 +199,7 @@ class EventRepository:
                         "tags": item.get("tags") or [],
                         "teamCodes": item.get("team_codes") or [],
                         "driverCodes": item.get("driver_codes") or [],
-                        "publishedAt": str(item.get("published_at") or item.get("collected_at")) if item.get("published_at") or item.get("collected_at") else None,
+                        "publishedAt": str(item["published_at"]) if item.get("published_at") else None,
                         "isPaywalled": item.get("is_paywalled", False),
                     }
                     for item in news_rows
