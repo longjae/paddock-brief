@@ -565,16 +565,18 @@ footer { display: flex; justify-content: space-between; padding: 20px 2px 34px; 
 .live-shell .live-tower-head, .live-shell .live-tower-list > article { grid-template-columns: 28px minmax(80px, 1fr) 60px 60px 50px 50px minmax(260px, 32%) 105px; gap: 6px; }
 .live-shell .live-tower-list > article { min-height: 46px; }
 .live-shell .live-tower-list article > div i { height: 20px; }
-.live-shell .live-side-column { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(180px, 1.25fr) minmax(0, 1fr) minmax(0, 1fr); min-height: 0; }
+.live-shell .live-side-column { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(230px, 1.5fr) minmax(0, 1fr) minmax(0, 1fr); min-height: 0; }
 .live-shell .live-feed-panel { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .live-shell .live-side-column .live-message-list { flex: 1; min-height: 0; max-height: none; overflow-y: auto; }
 .track-replay { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
-.track-replay > header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+.track-replay > header { display: flex; align-items: center; justify-content: space-between; padding: 7px 12px; border-bottom: 1px solid var(--line); }
 .track-replay h3 { margin: 0; font-size: 16px; }
-.track-replay > header > span { color: var(--muted); font: 700 10px var(--font-mono); }
-.track-replay-control { display: flex; align-items: center; gap: 8px; padding: 8px 14px 0; color: var(--muted); font-size: 11px; white-space: nowrap; }
+.track-replay-actions { display: flex; align-items: center; gap: 8px; }.track-replay-actions span { color: var(--muted); font: 700 10px var(--font-mono); }.track-replay-actions button { color: var(--ink); background: #20252c; border: 1px solid var(--line); border-radius: 4px; cursor: pointer; font-size: 11px; padding: 4px 7px; }
+.track-replay.expanded { position: fixed; inset: 5vh 8vw; z-index: 100; box-shadow: 0 0 0 100vmax rgba(0,0,0,.82); background: #101416; }
+.track-replay.expanded .track-replay-map { min-height: 0; }
+.track-replay-control { display: flex; align-items: center; gap: 8px; padding: 4px 12px 0; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .track-replay-control strong { color: var(--ink); }.track-replay-control input { flex: 1; min-width: 40px; accent-color: var(--red); }
-.track-replay-map { flex: 1; min-height: 80px; width: 100%; padding: 4px 12px; }
+.track-replay-map { flex: 1; min-height: 65px; width: 100%; padding: 2px 12px; }
 .track-replay-telemetry { display: flex; align-items: center; gap: 9px; overflow-x: auto; padding: 5px 14px; border-top: 1px solid var(--line); white-space: nowrap; }
 .track-replay-telemetry label { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 10px; }.track-replay-telemetry select { max-width: 90px; color: var(--ink); background: #151a20; border: 1px solid var(--line); border-radius: 4px; }
 .track-replay-telemetry :is(b, span) { color: var(--ink); font: 800 11px var(--font-mono); }.track-replay-telemetry small { color: var(--muted); font-size: 8px; }
@@ -600,15 +602,19 @@ footer { display: flex; justify-content: space-between; padding: 20px 2px 34px; 
 .live-tyre-usage b { color: #f5f6fa; font: 800 10px var(--font-mono); }.live-tyre-usage small { color: #b8bfce; font: 700 9px var(--font-mono); }
 .live-mobile-metrics { display: none; }
 
-@media (max-width: 1320px) {
+@media (max-width: 1100px) {
   .live-shell .live-grid { grid-template-columns: minmax(0, 1fr); height: auto; }
   .live-shell .live-tower { height: min(62dvh, 680px); }
   .live-shell .live-side-column { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: 280px 280px; }.live-shell .track-replay { grid-column: 1 / -1; }
 }
 @media (max-width: 640px) {
+  .track-replay.expanded { inset: 4vh 3vw; }
   .live-shell .live-summary-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .live-shell .live-side-column { grid-template-columns: minmax(0, 1fr); grid-template-rows: 260px repeat(2, minmax(0, 250px)); }.live-shell .track-replay { grid-column: auto; }
+  .live-shell .live-side-column { grid-template-columns: minmax(0, 1fr); grid-template-rows: 260px auto auto; }.live-shell .track-replay { grid-column: auto; }
+  .live-shell .live-feed-panel { min-height: 120px; max-height: 250px; }.live-shell .live-feed-panel:has(.live-message-list > .empty-state) { height: 120px; }
+  .track-replay-telemetry { flex-wrap: wrap; white-space: normal; }
   .live-shell .live-tower { height: min(60dvh, 580px); }
+  .live-shell .live-tower:has(.live-tower-list > .empty-state) { height: auto; }
   .mini-sector-legend { flex-wrap: wrap; }
 }
 

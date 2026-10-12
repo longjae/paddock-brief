@@ -4,12 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import type { EventDetail } from "@/lib/types";
 
 type Point = { x: number; y: number };
-type Replay = { available: true; sessionTime: string; trace: Point[]; positions: (Point & { number: number })[]; focusNumber: number; car: { speed: number; rpm: number; gear: number; throttle: number; brake: number; drs: number | null } | null } |
+type Replay = { available: true; sessionTime: string; trace: Point[]; positions: (Point & { number: number; code: string; team: string; colour: string })[]; focusNumber: number; car: { speed: number; rpm: number; gear: number; throttle: number; brake: number; drs: number | null } | null } |
   { available: false; reason: string };
 
 export function TrackReplay({ event }: { event: EventDetail }) {
   const [minute, setMinute] = useState(10);
   const [driverNumber, setDriverNumber] = useState(0);
+  const [expanded, setExpanded] = useState(false);
   const [replay, setReplay] = useState<Replay | null>(null);
   const [loading, setLoading] = useState(false);
   const race = event.sessions.find((session) => /race|grand prix|레이스/i.test(session.name) && !/sprint|스프린트/i.test(session.name));
@@ -18,8 +19,16 @@ export function TrackReplay({ event }: { event: EventDetail }) {
   useEffect(() => {
     setMinute(10);
     setDriverNumber(0);
+    setExpanded(false);
     setReplay(null);
   }, [event.slug]);
+
+  useEffect(() => {
+    if (!expanded) return;
+    const onKeyDown = (key: KeyboardEvent) => { if (key.key === "Escape") setExpanded(false); };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [expanded]);
 
   useEffect(() => {
     if (!hasEnded) return;
@@ -46,7 +55,7 @@ export function TrackReplay({ event }: { event: EventDetail }) {
     return { path: replay.trace.map((point, index) => { const p = convert(point); return `${index ? "L" : "M"}${p.x.toFixed(1)},${p.y.toFixed(1)}`; }).join(" "), convert };
   }, [replay]);
 
-  return <section className="panel track-replay"><header><div><p className="eyebrow">TRACK REPLAY</p><h3>선수 위치 기록</h3></div><span>OpenF1</span></header>
+  return <section className={`panel track-replay ${expanded ? "expanded" : ""}`} role={expanded ? "dialog" : undefined} aria-modal={expanded || undefined} aria-label={expanded ? "선수 위치 기록 확대" : undefined}><header><div><p className="eyebrow">TRACK REPLAY</p><h3>선수 위치 기록</h3></div><div className="track-replay-actions"><span>OpenF1</span>{hasEnded && <button type="button" onClick={() => setExpanded((current) => !current)} aria-label={expanded ? "지도 닫기" : "지도 확대"}>{expanded ? "닫기" : "확대"}</button>}</div></header>
     {!hasEnded ? <p className="track-replay-note">이 세션의 실시간 좌표는 연결되지 않았습니다. 종료된 레이스는 위치 기록으로 다시 볼 수 있습니다.</p> : <>
       <label className="track-replay-control">레이스 시작 후 <strong>{minute}분</strong><input type="range" min="5" max="180" step="5" value={minute} onChange={(change) => setMinute(Number(change.target.value))} /></label>
       {loading && <p className="track-replay-note">위치 기록을 불러오는 중입니다…</p>}
@@ -57,10 +66,10 @@ export function TrackReplay({ event }: { event: EventDetail }) {
         {replay.positions.map((position) => {
           const driver = event.eventDrivers.find((item) => item.number === position.number);
           const point = geometry.convert(position);
-          return <g key={position.number} transform={`translate(${point.x} ${point.y})`}><circle r={position.number === replay.focusNumber ? "20" : "15"} fill={driver?.colour || "#e10600"} stroke="#0d1119" strokeWidth="4" /><text y="-21" textAnchor="middle" fill="#fff" fontSize="21" fontWeight="800" paintOrder="stroke" stroke="#0d1119" strokeWidth="4">{driver?.code || position.number}</text></g>;
+          return <g key={position.number} transform={`translate(${point.x} ${point.y})`}><title>{driver?.code || position.code} · {driver?.team || position.team}</title><circle r={position.number === replay.focusNumber ? "20" : "15"} fill={driver?.colour || position.colour} stroke="#0d1119" strokeWidth="4" />{position.number === replay.focusNumber && <text y="-25" textAnchor="middle" fill="#fff" fontSize="23" fontWeight="800" paintOrder="stroke" stroke="#0d1119" strokeWidth="4">{driver?.code || position.code}</text>}</g>;
         })}
       </svg>}
-      {replay?.available && <div className="track-replay-telemetry"><label>선수 <select value={replay.focusNumber} onChange={(change) => setDriverNumber(Number(change.target.value))}>{replay.positions.map((position) => { const driver = event.eventDrivers.find((item) => item.number === position.number); return <option key={position.number} value={position.number}>{driver?.code || `#${position.number}`}</option>; })}</select></label>
+      {replay?.available && <div className="track-replay-telemetry"><label>선수 <select value={replay.focusNumber} onChange={(change) => setDriverNumber(Number(change.target.value))}>{replay.positions.map((position) => { const driver = event.eventDrivers.find((item) => item.number === position.number); return <option key={position.number} value={position.number}>{driver?.code || position.code}</option>; })}</select></label>
         {replay.car ? <><b>{replay.car.speed} <small>km/h</small></b><span>{replay.car.gear} <small>GEAR</small></span><span>{replay.car.rpm.toLocaleString()} <small>RPM</small></span><span>{replay.car.throttle}% <small>THROTTLE</small></span><span>{replay.car.brake ? "ON" : "OFF"} <small>BRAKE</small></span></> : <span>차량 데이터 없음</span>}
       </div>}
       {replay?.available && <p className="track-replay-source">기록 시각 {new Date(replay.sessionTime).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })} KST · <a href="https://openf1.org/docs/" target="_blank" rel="noreferrer">OpenF1 위치 데이터</a> · 실시간 아님</p>}

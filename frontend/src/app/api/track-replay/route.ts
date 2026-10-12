@@ -1,6 +1,7 @@
 type Session = { session_key: number; session_name: string; date_start: string; date_end?: string };
 type Location = { driver_number: number; date: string; x: number; y: number };
 type CarData = { driver_number: number; date: string; speed: number; rpm: number; n_gear: number; throttle: number; brake: number; drs: number | null };
+type Driver = { driver_number: number; name_acronym: string; team_colour: string; team_name: string };
 
 const OPENF1 = "https://api.openf1.org/v1";
 
@@ -47,9 +48,10 @@ export async function GET(request: Request) {
       "date>": from.toISOString(),
       "date<": new Date(from.getTime() + seconds * 1000).toISOString(),
     });
-    const [traceRows, positionRows] = await Promise.all([
+    const [traceRows, positionRows, drivers] = await Promise.all([
       openF1<Location[]>("location", windowParams(traceStart, 100)),
       openF1<Location[]>("location", windowParams(sampleStart, 3)),
+      openF1<Driver[]>("drivers", new URLSearchParams({ session_key: String(session.session_key) })),
     ]);
     const byDriver = new Map<number, Location>();
     for (const row of positionRows) if (Number.isFinite(row.x) && Number.isFinite(row.y)) byDriver.set(row.driver_number, row);
@@ -61,9 +63,14 @@ export async function GET(request: Request) {
       ...Object.fromEntries(windowParams(sampleStart, 2)), driver_number: String(focusNumber),
     }));
     const car = carRows.find((row) => row.driver_number === focusNumber) ?? null;
+    const driverByNumber = new Map(drivers.map((driver) => [driver.driver_number, driver]));
     return Response.json({ available: true, sessionKey: session.session_key, sessionTime: sampleStart.toISOString(),
       trace, focusNumber, car: car ? { speed: car.speed, rpm: car.rpm, gear: car.n_gear, throttle: car.throttle, brake: car.brake, drs: car.drs } : null,
-      positions: [...byDriver.values()].map(({ driver_number, x, y }) => ({ number: driver_number, x, y })) });
+      positions: [...byDriver.values()].map(({ driver_number, x, y }) => ({ number: driver_number, x, y,
+        code: driverByNumber.get(driver_number)?.name_acronym || `#${driver_number}`,
+        team: driverByNumber.get(driver_number)?.team_name || "",
+        colour: `#${driverByNumber.get(driver_number)?.team_colour || "e10600"}`,
+      })) });
   } catch {
     return Response.json({ available: false, reason: "위치 기록을 불러오지 못했습니다." }, { status: 502 });
   }
