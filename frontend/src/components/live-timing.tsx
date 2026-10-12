@@ -84,7 +84,7 @@ export function LiveTiming({ event }: { event: EventDetail }) {
   const weather = snapshot?.weather ?? {};
 
   return <section className="section-page live-page" id="live">
-    <div className="page-heading live-heading"><div><p className="eyebrow">LIVE TIMING</p><h2>{snapshot?.session.name || "세션 연결 중"}</h2><p>순위, 랩 타임, 타이어, 트랙 상태와 레이스 컨트롤 메시지를 2초 간격으로 갱신합니다.</p></div><div className={`live-connection ${snapshot?.isLive ? "connected" : connection}`} role="status"><span /><div><b>{statusLabel}</b><small>{updatedLabel}</small></div></div></div>
+    <div className="page-heading live-heading"><div><p className="eyebrow">LIVE TIMING</p><h2>{event.name}<small>{snapshot?.session.name || "세션 연결 중"}</small></h2></div><div className={`live-connection ${snapshot?.isLive ? "connected" : connection}`} role="status"><span /><div><b>{statusLabel}</b><small>{updatedLabel}</small></div></div></div>
     <div className="live-summary-strip">
       <article><span>LAP</span><b>{snapshot?.session.lap || "—"}<small> / {snapshot?.session.totalLaps || "—"}</small></b></article>
       <article><span>TIME REMAINING</span><b>{snapshot?.session.remaining || "—"}</b></article>
@@ -102,9 +102,9 @@ export function LiveTiming({ event }: { event: EventDetail }) {
       <section className="panel live-tower"><header><div><p className="eyebrow">TIMING TOWER</p><h3>실시간 순위</h3></div><span>{snapshot?.drivers.length ?? 0} DRIVERS</span></header>
         <div className="live-sector-meta"><strong>타이밍 · 미니섹터</strong><p className="mini-sector-legend"><span className="yellow" />일반 기록 <span className="green" />개인 최고 <span className="purple" />전체 최고 <span className="unknown" />상태 없음</p></div>
         <p className="mini-sector-help">색 막대는 구간 시간이 아닌 기록 상태입니다. 회색은 원본 피드에 상태가 없는 구간입니다.{snapshot?.session.remaining === "00:00:00" ? " 현재는 종료된 세션의 마지막 수신값을 보여줍니다." : ""}</p>
-        <div className="live-tower-head"><span>POS</span><span>DRIVER</span><span>TYRE</span><span>LAST</span><span>BEST</span><span>INTERVAL</span><span>GAP</span><span>SECTOR 1</span><span>SECTOR 2</span><span>SECTOR 3</span></div><div className="live-tower-list">
+        <div className="live-tower-head"><span>POS</span><span>DRIVER</span><span>TYRE / STINT</span><span>LAST</span><span>BEST</span><span>INTERVAL</span><span>GAP</span><span>S1</span><span>S2</span><span>S3</span></div><div className="live-tower-list">
         {!snapshot?.drivers.length && <p className="empty-state">세션이 시작되면 실시간 순위가 표시됩니다. 현재는 라이브 수집기 연결을 기다리고 있습니다.</p>}
-        {snapshot?.drivers.map((driver) => <article className={`${driver.inPit ? "in-pit" : ""} ${driver.retired ? "retired" : ""}`} key={driver.number} style={{ "--driver-colour": driver.colour } as React.CSSProperties}><b>{driver.position}</b><div><i /><strong>{driver.code}</strong><small>{driver.team}</small></div><span className={`live-compound ${driver.compound.toLowerCase()}`}>{driver.compound.slice(0, 1)}<small>{driver.tyreAge}L</small></span><time>{driver.lastLap}</time><time>{driver.bestLap}</time><em>{driver.inPit ? "PIT" : driver.interval}</em><em>{driver.retired ? "OUT" : driver.gap}</em>{[0, 1, 2].map((index) => <div className="mini-sector" key={index} aria-label={`${driver.code} 섹터 ${index + 1} 미니섹터`}>{driver.miniSectors?.[index]?.length ? driver.miniSectors[index].map((colour, segment) => <span className={colour} key={segment} title={`${index + 1}섹터 ${segment + 1}구간: ${colour}`} />) : <small>자료 없음</small>}</div>)}</article>)}
+        {snapshot?.drivers.map((driver) => <article className={`${driver.inPit ? "in-pit" : ""} ${driver.retired ? "retired" : ""}`} key={driver.number} style={{ "--driver-colour": driver.colour } as React.CSSProperties}><b>{driver.position}</b><div><i /><strong>{driver.code}</strong><small>{driver.team}</small></div><span className="live-tyre-cell" title={(driver.tyreHistory ?? []).map((tyre) => `${tyre.compound} ${tyre.laps}랩`).join(" → ")}><span className={`live-compound ${driver.compound.toLowerCase()}`}>{driver.compound.slice(0, 1)}<small>{driver.tyreAge}L</small></span><small>ST{driver.stint || "—"}</small></span><time>{driver.lastLap}</time><time>{driver.bestLap}</time><em>{driver.inPit ? "PIT" : driver.interval}</em><em>{driver.retired ? "OUT" : driver.gap}</em>{[0, 1, 2].map((index) => <div className="mini-sector" key={index} aria-label={`${driver.code} 섹터 ${index + 1} 미니섹터`}>{driver.miniSectors?.[index]?.length ? driver.miniSectors[index].map((colour, segment) => <span className={colour} key={segment} title={`${index + 1}섹터 ${segment + 1}구간: ${colour}`} />) : <small>자료 없음</small>}</div>)}</article>)}
       </div></section>
       <aside className="live-side-column">
         <section className="panel live-feed-panel"><header><div><p className="eyebrow">RACE CONTROL</p><h3>레이스 컨트롤</h3></div><span>{raceControlHistory.length} MESSAGES</span></header><div className="live-message-list">{!raceControlHistory.length && <p className="empty-state">공식 메시지를 기다리고 있습니다.</p>}{raceControlHistory.map((message, index) => <article key={`${value(message, "Utc")}-${value(message, "Message")}-${index}`}><time>{value(message, "Utc").slice(11, 19) || "—"}</time><p>{value(message, "Message") || value(message, "Category")}</p></article>)}</div></section>
@@ -125,21 +125,6 @@ export function LiveTiming({ event }: { event: EventDetail }) {
         })}</div></section>
       </aside>
     </div>
-    <section className="panel live-tyre-panel">
-      <header><div><p className="eyebrow">TYRE STATUS</p><h3>현재 타이어와 사용 랩</h3></div><p>{snapshot?.tyreInventory?.message || "드라이버별 현재 장착 타이어와 이번 세션 사용 이력을 표시합니다."}</p></header>
-      <div className="live-tyre-grid">
-        {!snapshot?.drivers.length && <p className="empty-state">타이어 정보를 기다리고 있습니다.</p>}
-        {snapshot?.drivers.map((driver) => <article key={`tyre-${driver.number}`} style={{ "--driver-colour": driver.colour } as React.CSSProperties}>
-          <div className="live-tyre-driver"><i /><b>{driver.code}</b><small>{driver.team}</small></div>
-          <span className={`live-compound ${driver.compound.toLowerCase()}`}>{driver.compound === "UNKNOWN" ? "?" : driver.compound.slice(0, 1)}<small>{driver.tyreAge} LAP</small></span>
-          <div className="live-tyre-meta"><b>STINT {driver.stint || "—"}</b><small>{driver.tyreNew ? "새 타이어로 시작" : "사용 타이어 또는 상태 미확인"}</small></div>
-          <div className="live-tyre-history" aria-label={`${driver.code} 타이어 사용 이력`}>
-            {(driver.tyreHistory ?? []).map((tyre, index) => <span className={tyre.compound.toLowerCase()} key={`${driver.number}-${index}`} title={`${tyre.compound} · ${tyre.laps}랩 · ${tyre.new ? "새 타이어" : "사용 타이어"}`}>{tyre.compound.slice(0, 1)}<small>{tyre.laps}</small></span>)}
-          </div>
-        </article>)}
-      </div>
-      <p className="live-tyre-note"><b>잔여 타이어 안내</b> F1 공개 라이브 피드는 차량에 장착한 타이어와 스틴트 이력은 제공하지만, 드라이버별 전체 미사용 잔여 세트 수는 제공하지 않습니다. 확인되지 않은 수량은 추정해서 표시하지 않습니다.</p>
-    </section>
     <p className="live-disclaimer">F1의 비공식 라이브 타이밍 피드를 사용합니다. 중계 화면보다 지연되거나 일부 항목이 제공되지 않을 수 있습니다. 최종 결과는 경기 종료 후 공식 자료로 보정합니다.</p>
   </section>;
 }

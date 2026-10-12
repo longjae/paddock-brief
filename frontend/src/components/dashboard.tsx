@@ -518,36 +518,14 @@ export function Dashboard({
           <Link className={activeSection === "race-centre" ? "active" : ""} href={pageHref("race-centre", event.slug)}>Race centre</Link>
           <Link className={activeSection === "glossary" ? "active" : ""} href={pageHref("glossary", event.slug)}>F1 용어집</Link>
         </nav>
-        <select className="event-select" aria-label="그랑프리 선택" value={event.slug} onChange={(change) => router.push(pageHref(activeSection, change.target.value, interviewSection))}>
+        <label className="event-select-wrap"><span>{event.season} 시즌</span><select className="event-select" aria-label="그랑프리 선택" value={event.slug} onChange={(change) => router.push(pageHref(activeSection, change.target.value, interviewSection))}>
           {events.length === 0 && <option value={event.slug}>{event.name}</option>}
           {events.map((calendarEvent) => <option key={calendarEvent.slug} value={calendarEvent.slug}>R{calendarEvent.round} · {calendarEvent.name}</option>)}
-        </select>
+        </select></label>
         <div className={`data-pill ${source}`}>{source === "api" ? "API connected" : "Sample mode"}</div>
       </header>
 
-      <div className="app-shell">
-        <aside className="calendar-sidebar" aria-label={`${event.season} 시즌 전체 라운드`}>
-          <div className="calendar-heading">
-            <p className="eyebrow">SEASON CALENDAR</p>
-            <strong>{event.season} 시즌</strong>
-            <span>{events.length || 24} ROUNDS</span>
-          </div>
-          <div className="round-list">
-            {events.length === 0 && <p className="calendar-empty">캘린더를 불러오는 중입니다…</p>}
-            {events.map((calendarEvent) => (
-              <Link
-                className={`round-button ${calendarEvent.slug === event.slug ? "active" : ""}`}
-                href={pageHref(activeSection, calendarEvent.slug, interviewSection)}
-                key={calendarEvent.slug}
-              >
-                <span>R{String(calendarEvent.round).padStart(2, "0")}</span>
-                <span><b>{calendarEvent.name}</b><small>{calendarEvent.country} · {calendarEvent.dateLabel.split(" · ")[0]}</small></span>
-                <i aria-hidden="true">›</i>
-              </Link>
-            ))}
-          </div>
-        </aside>
-
+      <div className={`app-shell ${activeSection === "live" ? "live-shell" : ""}`}>
         <div className="dashboard-page">
       <section className="hero" id="top">
         <div>
