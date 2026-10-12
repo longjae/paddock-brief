@@ -193,8 +193,13 @@ function sessionTime(value: string): number {
 }
 
 function shortBrief(text: string): string {
-  const clean = text.trim();
-  return clean.length > 160 ? `${clean.slice(0, 160).trimEnd()}…` : clean;
+  const clean = text.replace(/\s+/g, " ").trim();
+  if (clean.length <= 240) return clean;
+  const sentences = clean.match(/[^.!?。]+[.!?。]?/g)?.map((sentence) => sentence.trim()).filter(Boolean) ?? [];
+  const complete = sentences.slice(0, 2).join(" ");
+  if (complete.length >= 100 && complete.length <= 260) return complete;
+  const boundary = clean.lastIndexOf(" ", 240);
+  return `${clean.slice(0, boundary > 170 ? boundary : 240).trimEnd()}…`;
 }
 
 function newestFirst<T extends { publishedAt?: string | null }>(items: T[]): T[] {
@@ -404,7 +409,9 @@ export function Dashboard({
   }, [initialEventSlug]);
 
   const selectedVideo = event.videos.find((video) => video.id === activeVideo) ?? event.videos[0];
-  const raceComplete = event.drivers.length > 0 && event.sessions.some((session) => session.shortName === "R" && session.status === "done");
+  const classifiedDrivers = event.eventDrivers.filter((driver) => driver.resultPosition != null).toSorted((left, right) => (left.resultPosition ?? 99) - (right.resultPosition ?? 99));
+  const raceRows = event.drivers.length > 0 ? event.drivers : classifiedDrivers.map((driver) => ({ position: driver.resultPosition ?? 99, code: driver.code, team: driver.team, colour: driver.colour, gap: driver.resultStatus, compound: null, tyreAge: null }));
+  const raceComplete = classifiedDrivers.length > 0 || (event.drivers.length > 0 && event.sessions.some((session) => session.shortName === "R" && session.status === "done"));
   const mediaWindowOpen = !event.mediaOpenAt || (currentTime > 0 && currentTime >= new Date(event.mediaOpenAt).getTime());
   const teams = useMemo(() => {
     const seen = new Map<string, { code: string; name: string; colour: string; drivers: EventDetail["eventDrivers"] }>();
@@ -626,20 +633,20 @@ export function Dashboard({
           </div>
           <div className="weekend-data-grid" id="race-centre">
             <section className="panel timing-card">
-              <div className="section-heading compact"><div><p className="eyebrow">{raceComplete ? "RACE RESULT" : "LIVE PREVIEW"}</p><h2>레이스 센터</h2></div>{event.drivers.length > 0 && <span className="lap">{raceComplete ? "FINAL" : "LIVE"}</span>}</div>
+              <div className="section-heading compact"><div><p className="eyebrow">{raceComplete ? "RACE RESULT" : "LIVE PREVIEW"}</p><h2>레이스 센터</h2></div>{raceRows.length > 0 && <span className="lap">{raceComplete ? "FINAL" : "LIVE"}</span>}</div>
               <div className="timing-list">
-                {event.drivers.length === 0 && <p className="empty-state">레이스 세션이 시작되면 순위, 사용 타이어와 타이어 랩 수가 표시됩니다.</p>}
-                {event.drivers.map((driver) => (
+                {raceRows.length === 0 && <p className="empty-state">{currentTime > 0 && event.sessions.some((session) => session.shortName === "R" && sessionTime(session.startsAt) < currentTime) ? "레이스 일정은 지났지만 최종 순위가 아직 수집되지 않았습니다. 공식 레이스 허브에서 결과를 확인해 주세요." : "레이스 세션이 시작되면 순위, 사용 타이어와 타이어 랩 수가 표시됩니다."}</p>}
+                {raceRows.map((driver) => (
                   <div className="driver-row" key={driver.code}>
                     <b className="position">{driver.position}</b>
                     <i style={{ background: driver.colour }} />
                     <div><b>{driver.code}</b><small>{driver.team}</small></div>
-                    <Tyre compound={driver.compound} age={driver.tyreAge} />
+                    {driver.compound && driver.tyreAge != null ? <Tyre compound={driver.compound} age={driver.tyreAge} /> : <span className="tyre-data-unavailable">타이어 기록 없음</span>}
                     <span className="gap">{driver.gap}</span>
                   </div>
                 ))}
               </div>
-              {event.drivers.length > 0 && <p className="status-line"><span /> {raceComplete ? "FINAL CLASSIFICATION" : "LIVE DATA"} <em>OpenF1</em></p>}
+              {raceRows.length > 0 && <p className="status-line"><span /> {raceComplete ? "FINAL CLASSIFICATION" : "RACE DATA"} <em>{event.drivers.length > 0 ? "경기 데이터" : "저장된 결과"}</em></p>}
             </section>
             <div className="weekend-data-side">
               <section className="panel tyre-card">

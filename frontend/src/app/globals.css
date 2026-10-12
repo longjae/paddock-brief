@@ -298,6 +298,7 @@ h1 { font-size: clamp(46px, 6vw, 84px); letter-spacing: -.065em; line-height: .9
 .driver-row > i { height: 28px; border-radius: 5px; }.driver-row > div { display: flex; flex-direction: column; gap: 3px; }.driver-row > div b { font: 750 13px var(--font-mono); }.driver-row > div small { color: var(--muted); font-size: 9px; white-space: nowrap; }
 .position { color: var(--muted); font: 12px var(--font-mono); text-align: right; }.gap { font: 9px var(--font-mono); color: #babdb6; text-align: right; }
 .tyre { display: inline-flex; gap: 4px; align-items: center; border: 1px solid; padding: 4px 6px; border-radius: 99px; font: 800 9px var(--font-mono); }.tyre small { font-weight: 500; opacity: .7; }.tyre-soft { color: var(--red); }.tyre-medium { color: var(--yellow); }.tyre-hard { color: #e7e9e2; }
+.tyre-data-unavailable { color: var(--muted); font-size: 10px; white-space: nowrap; }
 .status-line { display: flex; align-items: center; gap: 8px; margin: 0; padding: 14px 20px; border-top: 1px solid var(--line); color: #aeb1ab; font: 9px var(--font-mono); }.status-line > span { width: 6px; height: 6px; border-radius: 50%; background: var(--lime); box-shadow: 0 0 8px var(--lime); }.status-line em { margin-left: auto; font-style: normal; color: #646862; }
 footer { display: flex; justify-content: space-between; padding: 20px 2px 34px; color: #626660; font: 9px var(--font-mono); }
 
