@@ -91,17 +91,19 @@ export function LiveTiming({ event }: { event: EventDetail }) {
   }, [event.slug]);
 
   const raceSession = event.sessions.find((session) => session.shortName === "R");
+  const upcomingRace = raceSession && new Date(`${raceSession.startsAt.replace(" ", "T")}:00+09:00`).getTime() > Date.now();
   const raceEnded = raceSession?.status === "done" || (raceSession ? new Date(`${raceSession.startsAt.replace(" ", "T")}:00+09:00`).getTime() < Date.now() - 5 * 60 * 60_000 : false);
   const sessionEnded = raceEnded || snapshot?.session.remaining === "00:00:00";
   const updatedLabel = useMemo(() => !snapshot?.updatedAt ? "아직 수신된 라이브 신호가 없습니다" : `${new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Asia/Seoul" }).format(new Date(snapshot.updatedAt))} KST ${sessionEnded ? "피드 확인" : "갱신"}`, [snapshot?.updatedAt, sessionEnded]);
   const connection = snapshot?.connection ?? (streamState === "retrying" ? "reconnecting" : "connecting");
   const feedAgeSeconds = snapshot?.updatedAt ? Math.max(0, Math.floor((Date.now() - new Date(snapshot.updatedAt).getTime()) / 1000)) : null;
   const feedStale = !sessionEnded && snapshot?.isLive && feedAgeSeconds !== null && feedAgeSeconds > 30;
-  const statusLabel = sessionEnded ? "종료 세션 · 마지막 기록" : feedStale ? "데이터 갱신 지연" : connection === "live" && !snapshot?.isLive ? "피드 연결 · 세션 대기" : STATUS_LABEL[connection];
+  const statusLabel = upcomingRace ? "레이스 예정" : sessionEnded ? "종료 세션 · 마지막 기록" : feedStale ? "데이터 갱신 지연" : connection === "live" && !snapshot?.isLive ? "피드 연결 · 세션 대기" : STATUS_LABEL[connection];
   const weather = snapshot?.weather ?? {};
 
   return <section className="section-page live-page" id="live">
     <div className="page-heading live-heading"><div><p className="eyebrow">LIVE TIMING</p><h2>{event.name}<small>{snapshot?.session.name || "세션 연결 중"}</small></h2></div><div className={`live-connection ${sessionEnded ? "ended" : feedStale ? "stale" : snapshot?.isLive ? "connected" : connection}`} role="status"><span /><div><b>{statusLabel}</b><small>{updatedLabel}{feedStale ? ` · ${feedAgeSeconds}초 전` : ""}</small></div></div></div>
+    {upcomingRace && <section className="live-upcoming" aria-label="선택한 그랑프리 일정"><div><p className="eyebrow">UPCOMING GRAND PRIX</p><strong>{event.name}</strong><span>{event.circuit} · {event.dateLabel}</span></div><div className="live-upcoming-sessions">{event.sessions.map((session) => <div key={session.shortName}><b>{session.shortName}</b><span>{session.name}</span><time>{session.startsAt} KST</time></div>)}</div></section>}
     <div className="live-summary-strip">
       <article><span>LAP</span><b>{snapshot?.session.lap || "—"}<small> / {snapshot?.session.totalLaps || "—"}</small></b></article>
       <article><span>TIME REMAINING</span><b>{snapshot?.session.remaining || "—"}</b></article>
@@ -145,8 +147,9 @@ export function LiveTiming({ event }: { event: EventDetail }) {
           </div>
         </article>)}
       </div></section>
-      <aside className="live-side-column">
-        <div className={`live-track-slot ${mobilePanel === "track" ? "mobile-active" : ""}`}><TrackReplay event={event} selectedDriverNumber={selectedDriverNumber} /></div>
+      <div className={`live-track-slot ${mobilePanel === "track" ? "mobile-active" : ""}`}><TrackReplay event={event} selectedDriverNumber={selectedDriverNumber} /></div>
+    </div>
+    <div className="live-feed-grid">
         <section className={`panel live-feed-panel control-panel ${mobilePanel === "control" ? "mobile-active" : ""}`}><header><div><p className="eyebrow">RACE CONTROL</p><h3>레이스 컨트롤</h3></div><span>{raceControlHistory.length} MESSAGES</span></header><div className="live-message-list">{!raceControlHistory.length && <p className="empty-state">공식 메시지를 기다리고 있습니다.</p>}{raceControlHistory.map((message, index) => <article key={`${value(message, "Utc")}-${value(message, "Message")}-${index}`}><time>{value(message, "Utc").slice(11, 19) || "—"}</time><p>{value(message, "Message") || value(message, "Category")}</p></article>)}</div></section>
         <section className={`panel live-feed-panel radio-panel ${mobilePanel === "radio" ? "mobile-active" : ""}`}><header><div><p className="eyebrow">TEAM RADIO</p><h3>팀 라디오</h3></div><label className="radio-translation-toggle"><span>한국어 번역</span><input checked={radioTranslationEnabled} onChange={(change) => setRadioTranslationEnabled(change.target.checked)} type="checkbox" /><i /></label></header><div className="live-message-list radio-list">{!snapshot?.teamRadio.length && <p className="empty-state">공개된 팀 라디오를 기다리고 있습니다.</p>}{snapshot?.teamRadio.map((radio, index) => {
           const path = value(radio, "Path");
@@ -164,7 +167,6 @@ export function LiveTiming({ event }: { event: EventDetail }) {
             <div className="radio-transcript" role="status">{!transcript && <p>자막 제공 여부를 확인하는 중입니다…</p>}{transcript?.status === "loading" && <p>자막을 확인하는 중입니다…</p>}{transcript?.status === "unavailable" && <p>이 라디오의 자막은 아직 제공되지 않습니다. 음성으로 확인해 주세요.</p>}{transcript?.status === "failed" && <p>자막을 불러오지 못했습니다. 음성으로 확인해 주세요.</p>}{transcript?.status === "ready" && <>{radioTranslationEnabled && transcript.translation && <p className="translated"><i />{transcript.translation}</p>}<p className={radioTranslationEnabled && transcript.translation ? "original" : ""}><i />{transcript.text}</p><small>확인 가능한 발화만 담은 자동 자막입니다. 정확한 내용은 음성으로 확인하세요.</small></>}</div></>}
           </article>;
         })}</div></section>
-      </aside>
     </div>
     <p className="live-disclaimer">F1의 비공식 라이브 타이밍 피드를 사용합니다. 중계 화면보다 지연되거나 일부 항목이 제공되지 않을 수 있습니다. 최종 결과는 경기 종료 후 공식 자료로 보정합니다.</p>
   </section>;

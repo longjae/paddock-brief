@@ -1,8 +1,10 @@
 import os
+from unittest.mock import MagicMock
 
 os.environ["APP_USE_SAMPLE_DATA"] = "true"
 
 from fastapi.testclient import TestClient
+from fastapi import HTTPException
 
 from app.core.config import Settings
 from app.main import app
@@ -68,6 +70,19 @@ def test_featured_event_switches_when_next_media_window_opens() -> None:
 def test_sample_event_list_uses_frontend_field_names() -> None:
     event = EventRepository(Settings(app_use_sample_data=True)).list_events()[0]
     assert set(event) == {"slug", "season", "round", "name", "country", "circuit", "dateLabel", "mediaOpenAt", "mediaOpenLabel"}
+
+
+def test_missing_reviewed_event_can_fall_back_to_calendar() -> None:
+    repository = EventRepository(Settings(app_use_sample_data=True))
+    repository.client = MagicMock()
+    repository.client.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = None
+    try:
+        repository.get_event("2026-united-states")
+    except HTTPException as error:
+        assert error.status_code == 404
+    else:
+        raise AssertionError("Missing reviewed event must return 404")
+    repository.client.table.return_value.select.return_value.eq.return_value.maybe_single.assert_called_once()
 
 
 def test_health_uses_jolpica_mode() -> None:

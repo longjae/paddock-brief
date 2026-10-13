@@ -27,7 +27,7 @@ class EventRepository:
             self.client.table("events")
             .select("*, sessions(*, race_state_snapshots(*)), videos(*, sources(name)), interviews(*), tyre_allocations(*), team_content(*, teams(code,name,colour,sort_order), sources(name)), event_news(*, sources(name)), event_drivers(*, drivers(*), teams(code,name,colour,sort_order))")
             .eq("slug", slug)
-            .single()
+            .maybe_single()
             .execute()
         )
         if not response.data:
