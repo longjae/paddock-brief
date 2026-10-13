@@ -75,7 +75,7 @@ def test_sample_event_list_uses_frontend_field_names() -> None:
 def test_missing_reviewed_event_can_fall_back_to_calendar() -> None:
     repository = EventRepository(Settings(app_use_sample_data=True))
     repository.client = MagicMock()
-    repository.client.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = None
+    repository.client.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value = None
     try:
         repository.get_event("2026-united-states")
     except HTTPException as error:

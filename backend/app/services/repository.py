@@ -30,7 +30,7 @@ class EventRepository:
             .maybe_single()
             .execute()
         )
-        if not response.data:
+        if response is None or not response.data:
             raise HTTPException(status_code=404, detail="Event not found")
         return self._normalize(response.data)
 
