@@ -74,7 +74,8 @@ export async function GET(request: Request) {
         team: driverByNumber.get(driver_number)?.team_name || "",
         colour: `#${driverByNumber.get(driver_number)?.team_colour || "e10600"}`,
       })) });
-  } catch {
+  } catch (error) {
+    console.error("OpenF1 track replay failed", error);
     return Response.json({ available: false, reason: "위치 기록을 불러오지 못했습니다." }, { status: 502 });
   }
 }
