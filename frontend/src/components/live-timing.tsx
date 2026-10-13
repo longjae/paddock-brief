@@ -104,6 +104,8 @@ export function LiveTiming({ event }: { event: EventDetail }) {
   return <section className="section-page live-page" id="live">
     <div className="page-heading live-heading"><div><p className="eyebrow">LIVE TIMING</p><h2>{event.name}<small>{snapshot?.session.name || "세션 연결 중"}</small></h2></div><div className={`live-connection ${sessionEnded ? "ended" : feedStale ? "stale" : snapshot?.isLive ? "connected" : connection}`} role="status"><span /><div><b>{statusLabel}</b><small>{updatedLabel}{feedStale ? ` · ${feedAgeSeconds}초 전` : ""}</small></div></div></div>
     {upcomingRace && <section className="live-upcoming" aria-label="선택한 그랑프리 일정"><div><p className="eyebrow">UPCOMING GRAND PRIX</p><strong>{event.name}</strong><span>{event.circuit} · {event.dateLabel}</span></div><div className="live-upcoming-sessions">{event.sessions.map((session) => <div key={session.shortName}><b>{session.shortName}</b><span>{session.name}</span><time>{session.startsAt} KST</time></div>)}</div></section>}
+    {upcomingRace && <p className="live-upcoming-note">첫 세션이 시작되면 순위, 미니섹터, 레이스 컨트롤과 팀 라디오가 표시됩니다.</p>}
+    {!upcomingRace && <>
     <div className="live-summary-strip">
       <article><span>LAP</span><b>{snapshot?.session.lap || "—"}<small> / {snapshot?.session.totalLaps || "—"}</small></b></article>
       <article><span>TIME REMAINING</span><b>{snapshot?.session.remaining || "—"}</b></article>
@@ -168,6 +170,7 @@ export function LiveTiming({ event }: { event: EventDetail }) {
           </article>;
         })}</div></section>
     </div>
+    </>}
     <p className="live-disclaimer">F1의 비공식 라이브 타이밍 피드를 사용합니다. 중계 화면보다 지연되거나 일부 항목이 제공되지 않을 수 있습니다. 최종 결과는 경기 종료 후 공식 자료로 보정합니다.</p>
   </section>;
 }

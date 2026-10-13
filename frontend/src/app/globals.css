@@ -572,6 +572,7 @@ footer { display: flex; justify-content: space-between; padding: 20px 2px 34px; 
 .live-upcoming { display: flex; align-items: center; gap: 20px; margin: 0 0 12px; padding: 12px 16px; border: 1px solid var(--line); border-left: 3px solid var(--f1-red); border-radius: 10px; background: var(--panel); }
 .live-upcoming > div:first-child { display: grid; flex: 0 0 240px; gap: 4px; min-width: 0; }.live-upcoming .eyebrow { margin: 0; }.live-upcoming strong { font-size: 15px; }.live-upcoming > div:first-child > span { color: var(--muted); font-size: 12px; }
 .live-upcoming-sessions { display: flex; flex: 1; gap: 6px; min-width: 0; overflow-x: auto; }.live-upcoming-sessions > div { display: grid; flex: 1 0 130px; gap: 3px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; }.live-upcoming-sessions b { color: var(--f1-red-bright); font: 800 11px var(--font-mono); }.live-upcoming-sessions span { font-size: 11px; }.live-upcoming-sessions time { color: var(--muted); font: 700 10px var(--font-mono); }
+.live-upcoming-note { margin: 0; padding: 16px; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-size: 13px; }
 .live-mobile-nav, .live-driver-track-link { display: none; }
 .live-shell .live-feed-panel { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .live-shell .live-feed-panel > header { padding: 9px 14px; }
@@ -642,7 +643,9 @@ footer { display: flex; justify-content: space-between; padding: 20px 2px 34px; 
   .track-replay.expanded { inset: 4vh 3vw; }
   .live-shell .live-summary-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .live-shell .live-feed-grid { margin-top: 0; }
-  .live-upcoming-sessions > div { flex-basis: 150px; }
+  .live-upcoming-sessions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: visible; }
+  .live-upcoming-sessions > div { min-width: 0; }
+  .live-upcoming-sessions > div:last-child:nth-child(odd) { grid-column: 1 / -1; }
   .live-shell .live-feed-panel { min-height: 120px; max-height: 250px; }.live-shell .live-feed-panel:has(.live-message-list > .empty-state) { height: 120px; }
   .track-replay-telemetry { flex-wrap: wrap; white-space: normal; }
   .live-shell .live-tower { height: min(60dvh, 580px); }
