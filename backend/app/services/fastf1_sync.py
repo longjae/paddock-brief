@@ -54,7 +54,7 @@ def classification_snapshot(result_rows: list[dict[str, Any]], lap_rows: list[di
         position = int(safe_number(row.get("Position"), 999))
         code = str(row.get("Abbreviation") or "")
         tyre = tyres.get(code)
-        if not code or position == 999 or not tyre:
+        if not code or position == 999:
             continue
         colour = str(row.get("TeamColor") or "888888").lstrip("#")
         drivers.append(
@@ -64,8 +64,8 @@ def classification_snapshot(result_rows: list[dict[str, Any]], lap_rows: list[di
                 "name": str(row.get("FullName") or code),
                 "team": str(row.get("TeamName") or "Unknown"),
                 "colour": f"#{colour}",
-                "compound": tyre["compound"],
-                "tyreAge": tyre["tyre_age"],
+                "compound": tyre["compound"] if tyre else None,
+                "tyreAge": tyre["tyre_age"] if tyre else None,
                 "gap": format_gap(row.get("Time"), position),
             }
         )

@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.config import Settings
 from app.services.fastf1_sync import classification_snapshot, normalized_name, safe_number
+from app.services.race_results import fetch_public_results, public_classification_snapshot
 
 
 def parse_args() -> argparse.Namespace:
@@ -77,19 +78,27 @@ def main() -> int:
             if not any(term and term in normalized_name(ff_name) for term in expected_terms):
                 outcomes.append({"slug": event["slug"], "status": "skipped", "reason": f"FastF1 event mismatch: {ff_name}"})
                 continue
-            session = fastf1.get_session(int(event["season"]), int(event["round"]), "R")
-            session.load(telemetry=False, weather=False, messages=False)
-            result_rows = frame_rows(session.results)
-            lap_rows = frame_rows(session.laps)
-            state = classification_snapshot(result_rows, lap_rows)
-            if not state["drivers"]:
-                raise RuntimeError("FastF1 returned no classified drivers with tyre data")
+            result_rows: list[dict[str, Any]] = []
+            lap_rows: list[dict[str, Any]] = []
+            try:
+                session = fastf1.get_session(int(event["season"]), int(event["round"]), "R")
+                session.load(telemetry=False, weather=False, messages=False)
+                result_rows = frame_rows(session.results)
+                lap_rows = frame_rows(session.laps)
+                state = classification_snapshot(result_rows, lap_rows)
+                if not state["drivers"] or not lap_rows:
+                    raise ValueError("FastF1 classification or lap data unavailable")
+            except Exception:
+                race, stints = fetch_public_results(int(event["season"]), int(event["round"]), str(event["country"]))
+                state = public_classification_snapshot(race, stints)
+                result_rows = []
+                lap_rows = [{"LapNumber": stint.get("lap_end")} for stint in stints]
             if not args.dry_run:
                 database.table("race_state_snapshots").upsert(
                     {
                         "session_id": race_session["id"],
                         "captured_at": captured_at,
-                        "lap": max((row.get("LapNumber", 0) for row in lap_rows), default=0),
+                    "lap": max((int(safe_number(row.get("LapNumber"))) for row in lap_rows), default=0),
                         "state": state,
                     },
                     on_conflict="session_id,captured_at",

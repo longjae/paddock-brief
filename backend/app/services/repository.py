@@ -142,6 +142,13 @@ class EventRepository:
                 (item.get("drivers") or {}).get("full_name", ""),
             ),
         )
+        colours_by_code = {
+            (item.get("drivers") or {}).get("code"): (item.get("teams") or {}).get("colour")
+            for item in event_driver_rows
+        }
+        for driver in drivers:
+            if driver.get("colour") == "#888888" and colours_by_code.get(driver.get("code")):
+                driver["colour"] = colours_by_code[driver["code"]]
         return EventDetail.model_validate(
             {
                 "slug": row["slug"],
