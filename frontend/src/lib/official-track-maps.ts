@@ -36,5 +36,6 @@ export function officialTrackMap(eventSlug: string) {
     imageUrl: `https://media.formula1.com/image/upload/c_fit,h_704/q_auto/v1740000001/common/f1/2026/track/2026track${track.imageName}detailed.webp`,
     sourceUrl: `https://www.formula1.com/en/racing/2026/${track.f1Slug}`,
     fiaDocumentUrl: track.fiaDocument ? `https://www.fia.com/system/files/decision-document/${track.fiaDocument}` : null,
+    fiaMapImageUrl: track.fiaDocument ? `/tracks/fia-2026-${eventSlug.slice(5)}.jpg` : null,
   };
 }

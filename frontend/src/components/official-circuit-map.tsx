@@ -19,8 +19,8 @@ export function OfficialCircuitMap({ event }: { event: EventDetail }) {
       <button type="button" aria-pressed={view === "straight"} disabled={!map.fiaDocumentUrl} onClick={() => setView("straight")}>FIA 직선 모드 구간</button>
     </div>
     <div className="official-map-viewport">
-      {view === "straight" && map.fiaDocumentUrl
-        ? <iframe key={map.fiaDocumentUrl} title={`${event.name} FIA 2026 직선 모드 구간 지도`} src={`${map.fiaDocumentUrl}#page=2&view=FitH`} loading="lazy" />
+      {view === "straight" && map.fiaMapImageUrl
+        ? <Image src={map.fiaMapImageUrl} alt={`${event.name} FIA 2026 서킷맵과 직선 모드 구간`} width={1400} height={1800} sizes="(max-width: 640px) 100vw, 40vw" />
         : <Image src={map.imageUrl} alt={`${event.circuit} 2026 공식 트랙맵. 코너 번호, 섹터와 스피드 트랩 표시`} width={1200} height={700} sizes="(max-width: 640px) 100vw, 40vw" />}
     </div>
     <div className="official-map-sources">
