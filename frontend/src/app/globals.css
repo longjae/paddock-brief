@@ -566,8 +566,9 @@ footer { display: flex; justify-content: space-between; padding: 20px 2px 34px; 
 .live-shell .live-tower-head, .live-shell .live-tower-list > article { grid-template-columns: 28px minmax(80px, 1fr) 60px 60px 50px 50px minmax(260px, 32%) 105px; gap: 6px; }
 .live-shell .live-tower-list > article { min-height: 46px; }
 .live-shell .live-tower-list article > div i { height: 20px; }
-.live-shell .live-side-column { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(230px, 1.5fr) minmax(0, 1fr) minmax(0, 1fr); min-height: 0; }
+.live-shell .live-side-column { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(180px, 1.2fr) minmax(0, 1fr) minmax(0, 1fr); min-height: 0; }
 .live-shell .live-feed-panel { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.live-shell .live-feed-panel > header { padding: 9px 14px; }
 .live-shell .live-side-column .live-message-list { flex: 1; min-height: 0; max-height: none; overflow-y: auto; }
 .track-replay { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .track-replay > header { display: flex; align-items: center; justify-content: space-between; padding: 7px 12px; border-bottom: 1px solid var(--line); }

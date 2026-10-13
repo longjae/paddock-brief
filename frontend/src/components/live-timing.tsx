@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { EventDetail, LiveTimingSnapshot } from "@/lib/types";
 import { TrackReplay } from "@/components/track-replay";
 
@@ -31,15 +31,28 @@ export function LiveTiming({ event }: { event: EventDetail }) {
   const [radioTranscripts, setRadioTranscripts] = useState<Record<string, RadioTranscript>>({});
   const [radioTranslationEnabled, setRadioTranslationEnabled] = useState(true);
   const [raceControlHistory, setRaceControlHistory] = useState<LiveTimingSnapshot["raceControl"]>([]);
+  const raceControlSession = useRef("");
 
   const acceptSnapshot = (state: LiveTimingSnapshot) => {
     setSnapshot(state);
+    const sessionKey = `${event.slug}:${state.session.name || "unknown"}`;
+    const isNewSession = raceControlSession.current !== sessionKey;
+    let stored: LiveTimingSnapshot["raceControl"] = [];
+    if (isNewSession) {
+      raceControlSession.current = sessionKey;
+      try { stored = JSON.parse(window.localStorage.getItem(`race-control:${sessionKey}`) || "[]") as LiveTimingSnapshot["raceControl"]; }
+      catch { stored = []; }
+    }
     setRaceControlHistory((current) => {
-      const merged = mergeRaceControl(current, state.raceControl ?? []);
-      try { window.localStorage.setItem(`race-control:${event.slug}`, JSON.stringify(merged)); } catch { /* storage is optional */ }
-      return merged;
+      return mergeRaceControl(isNewSession ? stored : current, state.raceControl ?? []);
     });
   };
+
+  useEffect(() => {
+    if (!raceControlSession.current || !raceControlHistory.length) return;
+    try { window.localStorage.setItem(`race-control:${raceControlSession.current}`, JSON.stringify(raceControlHistory)); }
+    catch { /* storage is optional */ }
+  }, [raceControlHistory]);
 
   const loadRadioTranscript = (path: string, sessionPath: string, audioUrl: string) => {
     if (!path || radioTranscripts[path]) return;
@@ -52,10 +65,8 @@ export function LiveTiming({ event }: { event: EventDetail }) {
 
   useEffect(() => {
     let active = true;
-    try {
-      const stored = window.localStorage.getItem(`race-control:${event.slug}`);
-      setRaceControlHistory(stored ? JSON.parse(stored) as LiveTimingSnapshot["raceControl"] : []);
-    } catch { setRaceControlHistory([]); }
+    raceControlSession.current = "";
+    setRaceControlHistory([]);
     fetch(`${API_BASE}/events/${event.slug}/race-state`, { cache: "no-store" })
       .then((response) => { if (!response.ok) throw new Error("live state unavailable"); return response.json() as Promise<LiveTimingSnapshot>; })
       .then((state) => active && acceptSnapshot(state))
