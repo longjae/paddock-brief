@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { demoEvent } from "@/lib/mock-data";
 import { F1_GLOSSARY, GLOSSARY_CATEGORIES } from "@/lib/glossary";
+import { officialTrackMap } from "@/lib/official-track-maps";
 import type { GlossaryCategory } from "@/lib/glossary";
 import type { ChampionshipSnapshot, EventDetail, EventSummary, NewsArticle, TeamContent, Video } from "@/lib/types";
 import { LiveTiming } from "@/components/live-timing";
@@ -548,6 +549,7 @@ export function Dashboard({
   const driverTeamContentByDate = groupByPublishedDay(driverTeamContent);
   const driverInterviewItemsByDate = groupByPublishedDay(driverInterviewItems);
   const officialRaceHub = `https://www.formula1.com/en/racing/${event.season}/${event.slug.replace(`${event.season}-`, "")}`;
+  const officialMap = officialTrackMap(event.slug);
   const visibleGlossary = useMemo(() => {
     const query = glossaryQuery.trim().toLowerCase();
     return F1_GLOSSARY.filter((item) => {
@@ -598,8 +600,8 @@ export function Dashboard({
           <p className="hero-copy">{event.circuit}<br />{event.dateLabel}</p>
         </div>
         <div className="track-card">
-          {event.trackMapUrl ? <Image src={event.trackMapUrl} alt={`${event.circuit} 트랙 레이아웃`} width={470} height={220} sizes="(max-width: 980px) 90vw, 470px" /> : <div className="track-orbit"><span /><span /><span /></div>}
-          <div className="track-meta"><b>{event.circuit.toUpperCase()}</b><small>{event.country.toUpperCase()} · TRACK MAP</small></div>
+          {officialMap?.imageUrl || event.trackMapUrl ? <Image className={officialMap ? "official-hero-map" : undefined} src={officialMap?.imageUrl || event.trackMapUrl || ""} alt={`${event.circuit} 공식 트랙 레이아웃`} width={470} height={220} sizes="(max-width: 980px) 90vw, 470px" /> : <div className="track-orbit"><span /><span /><span /></div>}
+          <div className="track-meta"><b>{event.circuit.toUpperCase()}</b><small>{event.country.toUpperCase()} · TRACK MAP</small>{officialMap && <a href={officialMap.sourceUrl} target="_blank" rel="noreferrer">F1 공식 맵 ↗</a>}</div>
         </div>
       </section>
 

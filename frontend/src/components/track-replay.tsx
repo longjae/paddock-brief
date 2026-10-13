@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { EventDetail } from "@/lib/types";
+import { OfficialCircuitMap } from "@/components/official-circuit-map";
+import { officialTrackMap } from "@/lib/official-track-maps";
 
 type Point = { x: number; y: number };
 type Replay = { available: true; sessionTime: string; trace: Point[]; positions: (Point & { number: number; code: string; team: string; colour: string })[]; focusNumber: number; car: { speed: number; rpm: number; gear: number; throttle: number; brake: number; drs: number | null } | null } |
@@ -11,6 +13,7 @@ export function TrackReplay({ event, selectedDriverNumber = 0 }: { event: EventD
   const [minute, setMinute] = useState(10);
   const [driverNumber, setDriverNumber] = useState(0);
   const [expanded, setExpanded] = useState(false);
+  const [showOfficialMap, setShowOfficialMap] = useState(false);
   const [replay, setReplay] = useState<Replay | null>(null);
   const [loading, setLoading] = useState(false);
   const race = event.sessions.find((session) => /race|grand prix|레이스/i.test(session.name) && !/sprint|스프린트/i.test(session.name));
@@ -20,6 +23,7 @@ export function TrackReplay({ event, selectedDriverNumber = 0 }: { event: EventD
     setMinute(10);
     setDriverNumber(0);
     setExpanded(false);
+    setShowOfficialMap(false);
     setReplay(null);
   }, [event.slug]);
 
@@ -59,8 +63,8 @@ export function TrackReplay({ event, selectedDriverNumber = 0 }: { event: EventD
     return { path: replay.trace.map((point, index) => { const p = convert(point); return `${index ? "L" : "M"}${p.x.toFixed(1)},${p.y.toFixed(1)}`; }).join(" "), convert };
   }, [replay]);
 
-  return <section className={`panel track-replay ${expanded ? "expanded" : ""}`} role={expanded ? "dialog" : undefined} aria-modal={expanded || undefined} aria-label={expanded ? "선수 위치 기록 확대" : undefined}><header><div><p className="eyebrow">TRACK REPLAY</p><h3>선수 위치 기록</h3></div><div className="track-replay-actions"><span>OpenF1</span>{hasEnded && <button type="button" onClick={() => setExpanded((current) => !current)} aria-label={expanded ? "지도 닫기" : "지도 확대"}>{expanded ? "닫기" : "확대"}</button>}</div></header>
-    {!hasEnded ? <p className="track-replay-note">이 세션의 실시간 좌표는 연결되지 않았습니다. 종료된 레이스는 위치 기록으로 다시 볼 수 있습니다.</p> : <>
+  return <section className={`panel track-replay ${expanded ? "expanded" : ""}`} role={expanded ? "dialog" : undefined} aria-modal={expanded || undefined} aria-label={expanded ? "트랙맵 확대" : undefined}><header><div><p className="eyebrow">TRACK REPLAY</p><h3>{showOfficialMap ? "공식 트랙맵" : "선수 위치 기록"}</h3></div><div className="track-replay-actions"><span>{showOfficialMap ? "F1 · FIA" : "OpenF1"}</span>{officialTrackMap(event.slug) && <button type="button" onClick={() => setShowOfficialMap((current) => !current)}>{showOfficialMap ? "위치 기록" : "공식 맵"}</button>}{hasEnded && <button type="button" onClick={() => setExpanded((current) => !current)} aria-label={expanded ? "지도 닫기" : "지도 확대"}>{expanded ? "닫기" : "확대"}</button>}</div></header>
+    {showOfficialMap ? <OfficialCircuitMap event={event} /> : !hasEnded ? <p className="track-replay-note">이 세션의 실시간 좌표는 연결되지 않았습니다. 종료된 레이스는 위치 기록으로 다시 볼 수 있습니다.</p> : <>
       <label className="track-replay-control">레이스 시작 후 <strong>{minute}분</strong><input type="range" min="5" max="180" step="5" value={minute} onChange={(change) => setMinute(Number(change.target.value))} /></label>
       {loading && <p className="track-replay-note">위치 기록을 불러오는 중입니다…</p>}
       {!loading && replay && !replay.available && <p className="track-replay-note">{replay.reason}</p>}

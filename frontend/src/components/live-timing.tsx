@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { EventDetail, LiveTimingSnapshot } from "@/lib/types";
 import { TrackReplay } from "@/components/track-replay";
+import { OfficialCircuitMap } from "@/components/official-circuit-map";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 const STATUS_LABEL: Record<LiveTimingSnapshot["connection"], string> = { disabled: "수집기 대기", offline: "오프라인", connecting: "연결 중", reconnecting: "재연결 중", live: "실시간" };
@@ -104,6 +105,7 @@ export function LiveTiming({ event }: { event: EventDetail }) {
   return <section className="section-page live-page" id="live">
     <div className="page-heading live-heading"><div><p className="eyebrow">LIVE TIMING</p><h2>{event.name}<small>{snapshot?.session.name || "세션 연결 중"}</small></h2></div><div className={`live-connection ${sessionEnded ? "ended" : feedStale ? "stale" : snapshot?.isLive ? "connected" : connection}`} role="status"><span /><div><b>{statusLabel}</b><small>{updatedLabel}{feedStale ? ` · ${feedAgeSeconds}초 전` : ""}</small></div></div></div>
     {upcomingRace && <section className="live-upcoming" aria-label="선택한 그랑프리 일정"><div><p className="eyebrow">UPCOMING GRAND PRIX</p><strong>{event.name}</strong><span>{event.circuit} · {event.dateLabel}</span></div><div className="live-upcoming-sessions">{event.sessions.map((session) => <div key={session.shortName}><b>{session.shortName}</b><span>{session.name}</span><time>{session.startsAt} KST</time></div>)}</div></section>}
+    {upcomingRace && <section className="panel live-upcoming-map" aria-label="선택한 그랑프리 공식 트랙맵"><header><div><p className="eyebrow">CIRCUIT MAP</p><h3>공식 트랙맵</h3></div></header><OfficialCircuitMap event={event} /></section>}
     {upcomingRace && <p className="live-upcoming-note">첫 세션이 시작되면 순위, 미니섹터, 레이스 컨트롤과 팀 라디오가 표시됩니다.</p>}
     {!upcomingRace && <>
     <div className="live-summary-strip">
