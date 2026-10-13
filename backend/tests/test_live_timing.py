@@ -1,5 +1,8 @@
 import pytest
 import asyncio
+import base64
+import json
+import zlib
 
 from app.core.config import Settings
 from app.services.live_timing import LiveTimingService, _deep_merge, team_radio_audio_url
@@ -11,6 +14,26 @@ def test_deep_merge_preserves_existing_timing_fields() -> None:
     merged = _deep_merge(current, update)
     assert merged["Lines"]["1"]["Position"] == "1"
     assert merged["Lines"]["1"]["LastLapTime"]["Value"] == "1:31.000"
+
+
+def _zipped(value: dict) -> str:
+    compressor = zlib.compressobj(wbits=-zlib.MAX_WBITS)
+    raw = json.dumps(value).encode()
+    return base64.b64encode(compressor.compress(raw) + compressor.flush()).decode()
+
+
+def test_live_position_and_car_channels_are_decoded_and_reset_with_session() -> None:
+    service = LiveTimingService(Settings(app_use_sample_data=True))
+    service.consume_signalr({"type": 1, "target": "feed", "arguments": ["SessionInfo", {"Path": "2026/test/race/", "Name": "Race", "Meeting": {"Name": "Test Grand Prix"}}]})
+    service.consume_signalr({"type": 1, "target": "feed", "arguments": ["Position.z", _zipped({"Position": [{"Timestamp": "2026-01-01T12:00:00Z", "Entries": {"1": {"X": 120, "Y": 240, "Status": "OnTrack"}}}]})]})
+    service.consume_signalr({"type": 1, "target": "feed", "arguments": ["CarData.z", _zipped({"Entries": [{"Utc": "2026-01-01T12:00:00Z", "Cars": {"1": {"Channels": {"0": 12000, "2": 310, "3": 8, "4": 90, "5": 0}}}}]})]})
+    track = service.snapshot("2026-test")["track"]
+    assert track["positions"][0]["x"] == 120
+    assert track["cars"]["1"]["speed"] == 310
+    assert track["trace"] == [{"x": 120, "y": 240}]
+    service.consume_signalr({"type": 1, "target": "feed", "arguments": ["SessionInfo", {"Path": "2026/test/qualifying/"}]})
+    assert service.track_positions == {}
+    assert service.track_car_data == {}
 
 
 def test_signalr_feed_is_normalized_to_live_timing_contract() -> None:

@@ -68,6 +68,28 @@ export function LiveTiming({ event }: { event: EventDetail }) {
       .catch(() => setRadioTranscripts((current) => ({ ...current, [path]: { status: "failed" } })));
   };
 
+  const radioSessionPath = snapshot?.teamRadio.length ? value(snapshot.teamRadio[0], "SessionPath") : "";
+  useEffect(() => {
+    if (!radioSessionPath) return;
+    let active = true;
+    const loadSaved = () => {
+      fetch(`${API_BASE}/team-radio/transcripts?sessionPath=${encodeURIComponent(radioSessionPath)}`)
+        .then((response) => { if (!response.ok) throw new Error("saved captions unavailable"); return response.json() as Promise<Array<{ path: string; transcript: string; translation: string | null }>>; })
+        .then((rows) => {
+          if (!active) return;
+          setRadioTranscripts((current) => {
+            const next = { ...current };
+            for (const row of rows) next[row.path] = { status: "ready", text: row.transcript, translation: row.translation };
+            return next;
+          });
+        })
+        .catch(() => { /* saved captions are optional while the collector is catching up */ });
+    };
+    loadSaved();
+    const interval = window.setInterval(loadSaved, 60_000);
+    return () => { active = false; window.clearInterval(interval); };
+  }, [radioSessionPath]);
+
   useEffect(() => {
     let active = true;
     raceControlSession.current = "";
@@ -151,7 +173,7 @@ export function LiveTiming({ event }: { event: EventDetail }) {
           </div>
         </article>)}
       </div></section>
-      <div className={`live-track-slot ${mobilePanel === "track" ? "mobile-active" : ""}`}><TrackReplay event={event} selectedDriverNumber={selectedDriverNumber} /></div>
+      <div className={`live-track-slot ${mobilePanel === "track" ? "mobile-active" : ""}`}><TrackReplay event={event} selectedDriverNumber={selectedDriverNumber} liveTrack={snapshot?.track} /></div>
     </div>
     <div className="live-feed-grid">
         <section className={`panel live-feed-panel control-panel ${mobilePanel === "control" ? "mobile-active" : ""}`}><header><div><p className="eyebrow">RACE CONTROL</p><h3>레이스 컨트롤</h3></div><span>{raceControlHistory.length} MESSAGES</span></header><div className="live-message-list">{!raceControlHistory.length && <p className="empty-state">공식 메시지를 기다리고 있습니다.</p>}{raceControlHistory.map((message, index) => <article key={`${value(message, "Utc")}-${value(message, "Message")}-${index}`}><time>{value(message, "Utc").slice(11, 19) || "—"}</time><p>{value(message, "Message") || value(message, "Category")}</p></article>)}</div></section>
@@ -166,7 +188,7 @@ export function LiveTiming({ event }: { event: EventDetail }) {
           const utc = value(radio, "Utc");
           const published = utc ? new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Seoul" }).format(new Date(utc)) : "시간 정보 없음";
           return <article className="radio-card" key={`${utc}-${index}`} style={{ "--driver-colour": driver?.colour || "#e10600" } as React.CSSProperties}>
-            <button className="radio-card-toggle" type="button" aria-expanded={isOpen} onClick={() => { setOpenRadioPath(isOpen ? "" : path); if (!isOpen && !transcript) loadRadioTranscript(path, sessionPath, audioUrl); }}><span className="radio-driver"><span>#{racingNumber || "—"}</span><span className="radio-driver-name"><small>{driver?.team || "FORMULA 1"}</small><b>{driver?.name || driver?.code || `CAR ${racingNumber || "—"}`}</b></span><time>{published}</time></span><span className="radio-expand-label">{isOpen ? "접기" : "듣기 · 자막 확인"}</span></button>
+            <button className="radio-card-toggle" type="button" aria-expanded={isOpen} onClick={() => { setOpenRadioPath(isOpen ? "" : path); if (!isOpen && !transcript) loadRadioTranscript(path, sessionPath, audioUrl); }}><span className="radio-driver"><span>#{racingNumber || "—"}</span><span className="radio-driver-name"><small>{driver?.team || "FORMULA 1"}</small><b>{driver?.name || driver?.code || `CAR ${racingNumber || "—"}`}</b></span><time>{published}</time></span><span className="radio-expand-label">{isOpen ? "접기" : transcript?.status === "ready" ? "자막 있음 · 듣기" : "듣기 · 자막 확인"}</span></button>
             {isOpen && <><div className="radio-player">{(transcript?.audioUrl || audioUrl) && <audio controls preload="metadata" src={transcript?.audioUrl || audioUrl}>팀 라디오 오디오</audio>}</div>
             <div className="radio-transcript" role="status">{!transcript && <p>자막 제공 여부를 확인하는 중입니다…</p>}{transcript?.status === "loading" && <p>자막을 확인하는 중입니다…</p>}{transcript?.status === "unavailable" && <p>이 라디오의 자막은 아직 제공되지 않습니다. 음성으로 확인해 주세요.</p>}{transcript?.status === "failed" && <p>자막을 불러오지 못했습니다. 음성으로 확인해 주세요.</p>}{transcript?.status === "ready" && <>{radioTranslationEnabled && transcript.translation && <p className="translated"><i />{transcript.translation}</p>}<p className={radioTranslationEnabled && transcript.translation ? "original" : ""}><i />{transcript.text}</p><small>확인 가능한 발화만 담은 자동 자막입니다. 정확한 내용은 음성으로 확인하세요.</small></>}</div></>}
           </article>;

@@ -152,3 +152,11 @@ async def get_team_radio_transcript(path: str, sessionPath: str) -> dict[str, st
         raise HTTPException(status_code=400, detail=str(error)) from error
     except httpx.HTTPError as error:
         raise HTTPException(status_code=502, detail="Team radio transcription unavailable") from error
+
+
+@router.get("/team-radio/transcripts")
+async def get_team_radio_transcripts(sessionPath: str) -> list[dict[str, str | None]]:
+    try:
+        return await get_live_timing_service().saved_team_radio_transcripts(sessionPath)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error

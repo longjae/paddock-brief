@@ -644,6 +644,16 @@ footer { display: flex; justify-content: space-between; padding: 20px 2px 34px; 
   .live-upcoming { align-items: stretch; flex-direction: column; }.live-upcoming > div:first-child { flex-basis: auto; }
 }
 @media (max-width: 640px) {
+  .live-shell .live-record-strip { display: flex; gap: 6px; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: thin; }
+  .live-shell .live-record-strip article { flex: 0 0 135px; min-height: 58px; padding: 7px 9px; scroll-snap-align: start; }
+  .live-shell .live-summary-strip article { padding: 7px 10px; }
+  .live-shell .track-replay > header { flex-wrap: wrap; gap: 6px; }
+  .live-shell .track-replay h3 { font-size: 14px; }
+  .live-shell .track-replay-actions { margin-left: auto; }
+  .live-shell .track-replay-actions button { min-height: 34px; }
+  .live-shell .track-replay-note { margin: 14px 14px auto; }
+  .live-shell .radio-list .radio-card { margin-bottom: 8px; padding: 10px; }
+  .live-shell .radio-driver { gap: 7px; }
   .live-shell .live-mobile-nav { position: sticky; top: 0; z-index: 10; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin: 0 0 10px; padding: 5px; background: #10151c; border: 1px solid #303946; border-radius: 9px; }
   .live-mobile-nav button { min-height: 42px; padding: 5px 2px; color: #aeb8c5; background: transparent; border: 0; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer; }
   .live-mobile-nav button[aria-current="page"] { color: #fff; background: #284261; }

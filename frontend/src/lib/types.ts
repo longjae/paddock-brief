@@ -160,5 +160,11 @@ export type LiveTimingSnapshot = {
   drivers: LiveTimingDriver[];
   raceControl: Array<Record<string, string | number | boolean | null>>;
   teamRadio: Array<Record<string, string | number | boolean | null>>;
+  track?: {
+    sampledAt: string | null;
+    positions: Array<{ number: string; x: number; y: number; sampledAt: string }>;
+    cars: Record<string, { speed: number; rpm: number; gear: number; throttle: number; brake: number; sampledAt: string }>;
+    trace: Array<{ x: number; y: number }>;
+  } | null;
   lastError?: string | null;
 };

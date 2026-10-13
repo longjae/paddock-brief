@@ -7,9 +7,12 @@ seasonal schema change degrades one panel instead of breaking the whole API.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
+import math
 import re
+import zlib
 from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
@@ -37,6 +40,8 @@ PUBLIC_TOPICS = [
     "TeamRadio",
     "LapCount",
     "ExtrapolatedClock",
+    "Position.z",
+    "CarData.z",
 ]
 TEAM_RADIO_PATH_RE = re.compile(r"^TeamRadio/[A-Za-z0-9_-]+\.mp3$")
 SESSION_PATH_RE = re.compile(r"^[A-Za-z0-9_/-]+/$")
@@ -103,6 +108,19 @@ def _flag(value: Any) -> bool:
     return value is True or str(value).lower() == "true"
 
 
+def _compressed_topic(payload: Any) -> dict[str, Any]:
+    if isinstance(payload, dict):
+        return payload
+    if not isinstance(payload, str):
+        return {}
+    try:
+        decoded = zlib.decompress(base64.b64decode(payload.strip('"'), validate=True), -zlib.MAX_WBITS)
+        value = json.loads(decoded)
+        return value if isinstance(value, dict) else {}
+    except (ValueError, zlib.error, json.JSONDecodeError):
+        return {}
+
+
 class LiveTimingService:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
@@ -115,7 +133,54 @@ class LiveTimingService:
         self.radio_store = create_client(settings.supabase_url, settings.supabase_key) if settings.supabase_configured and not settings.app_use_sample_data else None
         self.race_control_history: dict[str, dict[str, Any]] = {}
         self._session_path: str | None = None
+        self.track_positions: dict[str, dict[str, Any]] = {}
+        self.track_car_data: dict[str, dict[str, Any]] = {}
+        self.track_trace: list[dict[str, float]] = []
+        self._trace_driver: str | None = None
+        self.track_updated_at: str | None = None
         self._task: asyncio.Task[None] | None = None
+
+    def _capture_track(self, topic: str, payload: Any) -> None:
+        data = _compressed_topic(payload)
+        if topic == "Position.z":
+            for sample in data.get("Position", []):
+                if not isinstance(sample, dict):
+                    continue
+                timestamp = str(sample.get("Timestamp") or "")
+                for number, point in (sample.get("Entries") or {}).items():
+                    if not isinstance(point, dict):
+                        continue
+                    try:
+                        x, y = float(point["X"]), float(point["Y"])
+                    except (KeyError, TypeError, ValueError):
+                        continue
+                    if not math.isfinite(x) or not math.isfinite(y):
+                        continue
+                    self.track_positions[str(number)] = {"number": str(number), "x": x, "y": y, "sampledAt": timestamp}
+                    if self._trace_driver is None and str(point.get("Status") or "OnTrack") in ("OnTrack", "0"):
+                        self._trace_driver = str(number)
+                    if str(number) == self._trace_driver:
+                        self.track_trace.append({"x": x, "y": y})
+                        self.track_trace = self.track_trace[-500:]
+                if timestamp:
+                    self.track_updated_at = timestamp
+        elif topic == "CarData.z":
+            for sample in data.get("Entries", []):
+                if not isinstance(sample, dict):
+                    continue
+                timestamp = str(sample.get("Utc") or "")
+                for number, car in (sample.get("Cars") or {}).items():
+                    channels = car.get("Channels") if isinstance(car, dict) else None
+                    if not isinstance(channels, dict):
+                        continue
+                    try:
+                        self.track_car_data[str(number)] = {
+                            "speed": int(channels["2"]), "rpm": int(channels["0"]),
+                            "gear": int(channels["3"]), "throttle": int(channels["4"]),
+                            "brake": int(channels["5"]), "sampledAt": timestamp,
+                        }
+                    except (KeyError, TypeError, ValueError):
+                        continue
 
     def _capture_race_control(self, payload: Any) -> None:
         if not isinstance(payload, dict):
@@ -139,6 +204,11 @@ class LiveTimingService:
             self.race_control_history.clear()
             self.radio_transcripts.clear()
             self.radio_translations.clear()
+            self.track_positions.clear()
+            self.track_car_data.clear()
+            self.track_trace.clear()
+            self._trace_driver = None
+            self.track_updated_at = None
         if path:
             self._session_path = path
 
@@ -217,6 +287,19 @@ class LiveTimingService:
             "language": "en" if transcript else None,
         }
 
+    async def saved_team_radio_transcripts(self, session_path: str) -> list[dict[str, str | None]]:
+        if not SESSION_PATH_RE.fullmatch(session_path) or ".." in session_path:
+            raise ValueError("Invalid team radio session path")
+        if self.radio_store is None:
+            return []
+        result = await asyncio.to_thread(
+            lambda: self.radio_store.table("team_radio_transcripts")
+            .select("path,transcript,translation")
+            .eq("session_path", session_path)
+            .execute()
+        )
+        return result.data or []
+
     def start(self) -> None:
         if self.settings.live_timing_enabled and self._task is None:
             self._task = asyncio.create_task(self._run(), name="f1-live-timing")
@@ -276,6 +359,9 @@ class LiveTimingService:
             if isinstance(result, dict):
                 for topic in PUBLIC_TOPICS:
                     if topic in result:
+                        if topic in ("Position.z", "CarData.z"):
+                            self._capture_track(topic, result[topic])
+                            continue
                         self.topics[topic] = _deep_merge(self.topics.get(topic, {}), result[topic])
                         if topic == "SessionInfo":
                             self._track_session(result[topic])
@@ -291,6 +377,11 @@ class LiveTimingService:
             return
         topic, payload = arguments[0], arguments[1]
         if topic not in PUBLIC_TOPICS:
+            return
+        if topic in ("Position.z", "CarData.z"):
+            self._capture_track(topic, payload)
+            self.updated_at = datetime.now(UTC).isoformat()
+            self.connection = "live"
             return
         if topic == "SessionInfo":
             self._track_session(payload)
@@ -394,6 +485,7 @@ class LiveTimingService:
                 "drivers": [],
                 "raceControl": [],
                 "teamRadio": [],
+                "track": None,
                 "lastError": None,
             }
         race_control = self.topics.get("RaceControlMessages", {}).get("Messages", {})
@@ -403,7 +495,7 @@ class LiveTimingService:
         track = self.topics.get("TrackStatus", {})
         clock = self.topics.get("ExtrapolatedClock", {})
         session_path = str(session_info.get("Path") or "")
-        radio_items = _items(radio)[-12:][::-1]
+        radio_items = _items(radio)[-150:][::-1]
         for item in radio_items:
             path = str(item.get("Path") or "")
             try:
@@ -435,6 +527,12 @@ class LiveTimingService:
             "drivers": rows,
             "raceControl": list(self.race_control_history.values())[-50:][::-1],
             "teamRadio": radio_items,
+            "track": {
+                "sampledAt": self.track_updated_at,
+                "positions": list(self.track_positions.values()),
+                "cars": self.track_car_data,
+                "trace": self.track_trace,
+            } if self.track_updated_at else None,
             "lastError": self.last_error,
         }
 
