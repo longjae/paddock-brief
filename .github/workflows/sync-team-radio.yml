@@ -1,8 +1,6 @@
 name: Sync team radio transcripts
 
 on:
-  schedule:
-    - cron: "17 4 * * *"
   workflow_dispatch:
     inputs:
       event_slug:
