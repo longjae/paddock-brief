@@ -66,6 +66,24 @@ def test_race_control_messages_are_retained_when_upstream_delta_removes_them() -
     assert [message["Message"] for message in messages] == ["GREEN FLAG", "YELLOW FLAG"]
 
 
+def test_other_grand_prix_does_not_show_previous_race_data() -> None:
+    service = LiveTimingService(Settings(app_use_sample_data=True))
+    service.topics = {
+        "SessionInfo": {"Name": "Race", "Meeting": {"Name": "Singapore Grand Prix"}},
+        "TimingData": {"Lines": {"1": {"Position": "1", "BestLapTime": {"Value": "1:30.000"}}}},
+        "RaceControlMessages": {"Messages": {"1": {"Utc": "2026-10-11T12:00:00Z", "Message": "CHEQUERED FLAG"}}},
+        "TeamRadio": {"Captures": {"1": {"Path": "TeamRadio/test.mp3"}}},
+        "LapCount": {"CurrentLap": 62, "TotalLaps": 62},
+    }
+    snapshot = service.snapshot("2026-united-states")
+    assert snapshot["session"]["meeting"] is None
+    assert snapshot["session"]["lap"] == 0
+    assert snapshot["drivers"] == []
+    assert snapshot["raceControl"] == []
+    assert snapshot["teamRadio"] == []
+    assert snapshot["fastestLap"] is None
+
+
 def test_race_control_history_resets_when_session_changes() -> None:
     service = LiveTimingService(Settings(app_use_sample_data=True))
     service._track_session({"Path": "2026/test/sprint/"})

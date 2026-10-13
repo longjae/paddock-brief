@@ -379,7 +379,23 @@ class LiveTimingService:
         normalized_meeting = re.sub(r"[^a-z0-9 ]", "", meeting_name.lower())
         event_matches = not meeting_name or all(word in normalized_meeting for word in requested_name.split())
         if not event_matches:
-            rows = []
+            return {
+                "event": event_slug,
+                "connection": "offline",
+                "isLive": False,
+                "updatedAt": None,
+                "delaySeconds": None,
+                "session": {"name": "세션 대기 중", "meeting": None, "remaining": "—", "lap": 0, "totalLaps": 0},
+                "trackStatus": {"code": "", "message": "정보 없음"},
+                "weather": {},
+                "fastestLap": None,
+                "fastestSectors": [],
+                "tyreInventory": {"available": False, "message": "세션 시작 후 타이어 정보가 표시됩니다."},
+                "drivers": [],
+                "raceControl": [],
+                "teamRadio": [],
+                "lastError": None,
+            }
         race_control = self.topics.get("RaceControlMessages", {}).get("Messages", {})
         self._capture_race_control({"Messages": race_control})
         radio = self.topics.get("TeamRadio", {}).get("Captures", {})

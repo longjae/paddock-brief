@@ -115,8 +115,13 @@ def get_interviews(slug: str, repository: EventRepository = Depends(get_reposito
 
 
 @router.get("/events/{slug}/race-state")
-def get_race_state(slug: str, repository: EventRepository = Depends(get_repository)) -> dict[str, object]:
-    event = repository.get_event(slug)
+async def get_race_state(
+    slug: str,
+    repository: EventRepository = Depends(get_repository),
+    jolpica: JolpicaService = Depends(get_jolpica_service),
+    openf1: OpenF1Service = Depends(get_openf1_service),
+) -> dict[str, object]:
+    event = await get_event(slug, repository, jolpica, openf1)
     live = get_live_timing_service().snapshot(slug)
     if live["drivers"]:
         return live
