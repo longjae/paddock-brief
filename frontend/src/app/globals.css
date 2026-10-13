@@ -567,6 +567,9 @@ footer { display: flex; justify-content: space-between; padding: 20px 2px 34px; 
 .live-shell .live-tower-list > article { min-height: 46px; }
 .live-shell .live-tower-list article > div i { height: 20px; }
 .live-shell .live-side-column { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(180px, 1.2fr) minmax(0, 1fr) minmax(0, 1fr); min-height: 0; }
+.live-track-slot { min-height: 0; }
+.live-track-slot > .track-replay { height: 100%; }
+.live-mobile-nav, .live-driver-track-link { display: none; }
 .live-shell .live-feed-panel { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .live-shell .live-feed-panel > header { padding: 9px 14px; }
 .live-shell .live-side-column .live-message-list { flex: 1; min-height: 0; max-height: none; overflow-y: auto; }
@@ -603,16 +606,32 @@ footer { display: flex; justify-content: space-between; padding: 20px 2px 34px; 
 .live-tyre-usage { display: flex; flex-direction: column; gap: 2px; min-width: 0; white-space: nowrap; }
 .live-tyre-usage b { color: #f5f6fa; font: 800 10px var(--font-mono); }.live-tyre-usage small { color: #b8bfce; font: 700 9px var(--font-mono); }
 .live-mobile-metrics { display: none; }
+.radio-card-toggle { display: block; width: 100%; padding: 0; color: inherit; background: none; border: 0; cursor: pointer; text-align: left; }
+.radio-card-toggle:focus-visible, .live-mobile-nav button:focus-visible, .live-driver-track-link:focus-visible { outline: 2px solid #ffbc00; outline-offset: 2px; }
+.radio-driver-name { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.radio-expand-label { display: block; margin-top: 7px; color: #aebed2; font-size: 11px; }
 
 @media (max-width: 1200px) {
   .live-shell .live-grid { grid-template-columns: minmax(0, 1fr); height: auto; }
   .live-shell .live-tower { height: min(62dvh, 680px); }
-  .live-shell .live-side-column { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: 280px 280px; }.live-shell .track-replay { grid-column: 1 / -1; }
+  .live-shell .live-side-column { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: 280px 280px; }.live-shell .live-track-slot { grid-column: 1 / -1; }
 }
 @media (max-width: 640px) {
+  .live-shell .live-mobile-nav { position: sticky; top: 0; z-index: 10; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin: 0 0 10px; padding: 5px; background: #10151c; border: 1px solid #303946; border-radius: 9px; }
+  .live-mobile-nav button { min-height: 42px; padding: 5px 2px; color: #aeb8c5; background: transparent; border: 0; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer; }
+  .live-mobile-nav button[aria-current="page"] { color: #fff; background: #284261; }
+  .live-shell .live-grid { display: block; }
+  .live-shell .live-tower:not(.mobile-active), .live-shell .live-side-column > :not(.mobile-active) { display: none; }
+  .live-shell .live-side-column { display: block; }
+  .live-shell .live-tower.mobile-active { height: min(68dvh, 650px); }
+  .live-shell .live-track-slot.mobile-active { height: min(64dvh, 540px); }
+  .live-shell .live-feed-panel.mobile-active { height: min(65dvh, 620px); max-height: none; }
+  .live-shell .live-feed-panel.mobile-active .live-message-list { overflow-y: auto; }
+  .live-shell .live-driver-track-link { grid-column: 2 / 4; grid-row: 4; display: block; justify-self: start; padding: 3px 0; color: #90beff; background: none; border: 0; font-size: 11px; font-weight: 700; cursor: pointer; }
+  .live-shell .live-tower-list > article { grid-template-rows: auto auto auto auto; }
   .track-replay.expanded { inset: 4vh 3vw; }
   .live-shell .live-summary-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .live-shell .live-side-column { grid-template-columns: minmax(0, 1fr); grid-template-rows: 260px auto auto; }.live-shell .track-replay { grid-column: auto; }
+  .live-shell .live-side-column { grid-template-columns: minmax(0, 1fr); grid-template-rows: 260px auto auto; }.live-shell .live-track-slot { grid-column: auto; }
   .live-shell .live-feed-panel { min-height: 120px; max-height: 250px; }.live-shell .live-feed-panel:has(.live-message-list > .empty-state) { height: 120px; }
   .track-replay-telemetry { flex-wrap: wrap; white-space: normal; }
   .live-shell .live-tower { height: min(60dvh, 580px); }

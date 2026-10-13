@@ -7,7 +7,7 @@ type Point = { x: number; y: number };
 type Replay = { available: true; sessionTime: string; trace: Point[]; positions: (Point & { number: number; code: string; team: string; colour: string })[]; focusNumber: number; car: { speed: number; rpm: number; gear: number; throttle: number; brake: number; drs: number | null } | null } |
   { available: false; reason: string };
 
-export function TrackReplay({ event }: { event: EventDetail }) {
+export function TrackReplay({ event, selectedDriverNumber = 0 }: { event: EventDetail; selectedDriverNumber?: number }) {
   const [minute, setMinute] = useState(10);
   const [driverNumber, setDriverNumber] = useState(0);
   const [expanded, setExpanded] = useState(false);
@@ -22,6 +22,10 @@ export function TrackReplay({ event }: { event: EventDetail }) {
     setExpanded(false);
     setReplay(null);
   }, [event.slug]);
+
+  useEffect(() => {
+    if (selectedDriverNumber) setDriverNumber(selectedDriverNumber);
+  }, [selectedDriverNumber]);
 
   useEffect(() => {
     if (!expanded) return;

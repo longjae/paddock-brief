@@ -1,4 +1,5 @@
 import pytest
+import asyncio
 
 from app.core.config import Settings
 from app.services.live_timing import LiveTimingService, _deep_merge, team_radio_audio_url
@@ -113,6 +114,31 @@ def test_team_radio_audio_url_is_restricted_to_official_paths() -> None:
         team_radio_audio_url("https://example.com/radio.mp3", session_path)
     with pytest.raises(ValueError):
         team_radio_audio_url(path, "../../private/")
+
+
+def test_saved_radio_transcript_is_available_without_runtime_openai_key() -> None:
+    class StoredRadio:
+        def table(self, name):
+            assert name == "team_radio_transcripts"
+            return self
+
+        def select(self, columns):
+            return self
+
+        def eq(self, column, value):
+            return self
+
+        def limit(self, count):
+            return self
+
+        def execute(self):
+            return type("Result", (), {"data": [{"transcript": "Box, box", "translation": "피트로 들어오세요"}]})()
+
+    service = LiveTimingService(Settings(app_use_sample_data=True, openai_api_key=None))
+    service.radio_store = StoredRadio()
+    result = asyncio.run(service.transcribe_team_radio("TeamRadio/VER_3_20261010_173427.mp3", "2026/2026-10-10_Singapore_Grand_Prix/2026-10-10_Sprint/"))
+    assert result["transcript"] == "Box, box"
+    assert result["translation"] == "피트로 들어오세요"
 
 
 def test_mini_sector_colours_follow_timing_segments() -> None:

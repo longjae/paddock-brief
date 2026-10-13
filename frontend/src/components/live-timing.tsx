@@ -7,7 +7,8 @@ import { TrackReplay } from "@/components/track-replay";
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 const STATUS_LABEL: Record<LiveTimingSnapshot["connection"], string> = { disabled: "수집기 대기", offline: "오프라인", connecting: "연결 중", reconnecting: "재연결 중", live: "실시간" };
 const TRACK_LABEL: Record<string, string> = { "1": "트랙 정상", "2": "황기", "4": "세이프티카", "5": "적기", "6": "가상 세이프티카", "7": "VSC 종료 중" };
-type RadioTranscript = { status: "loading" | "ready" | "failed"; text?: string | null; translation?: string | null; audioUrl?: string };
+type RadioTranscript = { status: "loading" | "ready" | "unavailable" | "failed"; text?: string | null; translation?: string | null; audioUrl?: string };
+type MobilePanel = "timing" | "track" | "control" | "radio";
 
 function value(item: Record<string, string | number | boolean | null>, key: string): string {
   return item[key] === null || item[key] === undefined ? "" : String(item[key]);
@@ -30,6 +31,9 @@ export function LiveTiming({ event }: { event: EventDetail }) {
   const [streamState, setStreamState] = useState<"opening" | "open" | "retrying">("opening");
   const [radioTranscripts, setRadioTranscripts] = useState<Record<string, RadioTranscript>>({});
   const [radioTranslationEnabled, setRadioTranslationEnabled] = useState(true);
+  const [mobilePanel, setMobilePanel] = useState<MobilePanel>("timing");
+  const [selectedDriverNumber, setSelectedDriverNumber] = useState(0);
+  const [openRadioPath, setOpenRadioPath] = useState("");
   const [raceControlHistory, setRaceControlHistory] = useState<LiveTimingSnapshot["raceControl"]>([]);
   const raceControlSession = useRef("");
 
@@ -59,7 +63,7 @@ export function LiveTiming({ event }: { event: EventDetail }) {
     setRadioTranscripts((current) => ({ ...current, [path]: { status: "loading", audioUrl } }));
     fetch(`${API_BASE}/team-radio/transcript?path=${encodeURIComponent(path)}&sessionPath=${encodeURIComponent(sessionPath)}`)
       .then((response) => { if (!response.ok) throw new Error("transcript unavailable"); return response.json() as Promise<{ audioUrl: string; transcript?: string | null; translation?: string | null }>; })
-      .then((result) => setRadioTranscripts((current) => ({ ...current, [path]: { status: "ready", text: result.transcript, translation: result.translation, audioUrl: result.audioUrl } })))
+      .then((result) => setRadioTranscripts((current) => ({ ...current, [path]: { status: result.transcript ? "ready" : "unavailable", text: result.transcript, translation: result.translation, audioUrl: result.audioUrl } })))
       .catch(() => setRadioTranscripts((current) => ({ ...current, [path]: { status: "failed" } })));
   };
 
@@ -67,6 +71,10 @@ export function LiveTiming({ event }: { event: EventDetail }) {
     let active = true;
     raceControlSession.current = "";
     setRaceControlHistory([]);
+    setRadioTranscripts({});
+    setOpenRadioPath("");
+    setMobilePanel("timing");
+    setSelectedDriverNumber(0);
     fetch(`${API_BASE}/events/${event.slug}/race-state`, { cache: "no-store" })
       .then((response) => { if (!response.ok) throw new Error("live state unavailable"); return response.json() as Promise<LiveTimingSnapshot>; })
       .then((state) => active && acceptSnapshot(state))
@@ -81,14 +89,6 @@ export function LiveTiming({ event }: { event: EventDetail }) {
     stream.addEventListener("error", () => active && setStreamState("retrying"));
     return () => { active = false; stream.close(); };
   }, [event.slug]);
-
-  useEffect(() => {
-    for (const radio of snapshot?.teamRadio ?? []) {
-      const path = value(radio, "Path");
-      if (!path || radioTranscripts[path]) continue;
-      loadRadioTranscript(path, value(radio, "SessionPath"), value(radio, "AudioUrl"));
-    }
-  }, [snapshot?.teamRadio, radioTranscripts]);
 
   const raceSession = event.sessions.find((session) => session.shortName === "R");
   const raceEnded = raceSession?.status === "done" || (raceSession ? new Date(`${raceSession.startsAt.replace(" ", "T")}:00+09:00`).getTime() < Date.now() - 5 * 60 * 60_000 : false);
@@ -115,18 +115,22 @@ export function LiveTiming({ event }: { event: EventDetail }) {
         return <article key={sector}><span>FASTEST S{sector}</span><b>{record?.time || "—"}</b><small>{record?.driver || "기록 대기"}</small></article>;
       })}
     </div>
+    <nav className="live-mobile-nav" aria-label="라이브 화면 선택">
+      {([ ["timing", "순위"], ["track", "트랙맵"], ["control", "레이스 컨트롤"], ["radio", "팀 라디오"] ] as const).map(([panel, label]) => <button key={panel} type="button" aria-current={mobilePanel === panel ? "page" : undefined} onClick={() => setMobilePanel(panel)}>{label}</button>)}
+    </nav>
     <div className="live-grid">
-      <section className="panel live-tower"><header><div><p className="eyebrow">TIMING TOWER</p><h3>실시간 순위</h3></div><span>{snapshot?.drivers.length ?? 0} DRIVERS</span></header>
+      <section className={`panel live-tower ${mobilePanel === "timing" ? "mobile-active" : ""}`}><header><div><p className="eyebrow">TIMING TOWER</p><h3>실시간 순위</h3></div><span>{snapshot?.drivers.length ?? 0} DRIVERS</span></header>
         <div className="live-sector-meta"><strong>타이밍 · 미니섹터</strong><p className="mini-sector-legend"><span className="yellow" />일반 기록 <span className="green" />개인 최고 <span className="purple" />전체 최고 <span className="pit" />피트 <span className="unknown" />미제공</p></div>
         <p className="mini-sector-help">막대 상태와 섹터 시간은 별도 신호입니다. 한쪽만 들어올 수 있습니다. 회색 막대는 구간 상태 미제공, ‘—’는 섹터 시간 미제공입니다.{sessionEnded ? " 현재는 종료된 세션의 마지막 수신값을 보여줍니다." : ""}</p>
         <div className="live-tower-head"><span>POS</span><span>DRIVER</span><span>LAST</span><span>BEST</span><span>INTERVAL</span><span>GAP</span><span>MINI SECTORS · S1 / S2 / S3</span><span>TYRE / STINT</span></div><div className="live-tower-list">
-        {!snapshot?.drivers.length && <p className="empty-state">{raceEnded ? "이 GP의 레이스는 종료됐습니다. 저장된 라이브 순위가 없습니다. 오른쪽 트랙 리플레이와 위켄드의 최종 결과를 확인하세요." : "세션이 시작되면 실시간 순위가 표시됩니다. 현재는 라이브 수집기 연결을 기다리고 있습니다."}</p>}
+        {!snapshot?.drivers.length && <p className="empty-state">{raceEnded ? "이 GP의 레이스는 종료됐습니다. 저장된 라이브 순위가 없습니다. 트랙맵의 위치 기록과 위켄드의 최종 결과를 확인하세요." : "세션이 시작되면 실시간 순위가 표시됩니다. 현재는 라이브 수집기 연결을 기다리고 있습니다."}</p>}
         {snapshot?.drivers.map((driver) => <article className={`${driver.inPit ? "in-pit" : ""} ${driver.retired ? "retired" : ""}`} key={driver.number} style={{ "--driver-colour": driver.colour } as React.CSSProperties}>
           <b>{driver.position}</b>
           <div className="live-driver-name"><i /><strong>{driver.code}</strong><small>{driver.team}</small></div>
           <time>{driver.lastLap}</time><time>{driver.bestLap}</time>
           <em>{driver.inPit ? "PIT" : driver.interval}</em><em>{driver.retired ? "OUT" : driver.gap}</em>
           <div className="live-mobile-metrics"><span>최근 {driver.lastLap || "—"}</span><span>최고 {driver.bestLap || "—"}</span><span>간격 {driver.inPit ? "PIT" : driver.interval || "—"}</span></div>
+          <button className="live-driver-track-link" type="button" onClick={() => { setSelectedDriverNumber(Number(driver.number)); setMobilePanel("track"); }}>트랙에서 보기 →</button>
           <div className="mini-sector-dashboard" aria-label={`${driver.code} 미니섹터와 섹터 시간`}>
             {[0, 1, 2].map((index) => <div className="mini-sector-group" key={index} aria-label={`${index + 1}섹터: ${driver.currentSectors?.[index] && driver.currentSectors[index] !== "—" ? driver.currentSectors[index] : "시간 미제공"}, ${driver.miniSectors?.[index]?.length ? "구간 상태 수신" : "구간 상태 미제공"}`}>
               <div className="mini-sector-bars" aria-label={`${index + 1}섹터 구간 상태`}>
@@ -142,21 +146,22 @@ export function LiveTiming({ event }: { event: EventDetail }) {
         </article>)}
       </div></section>
       <aside className="live-side-column">
-        <TrackReplay event={event} />
-        <section className="panel live-feed-panel"><header><div><p className="eyebrow">RACE CONTROL</p><h3>레이스 컨트롤</h3></div><span>{raceControlHistory.length} MESSAGES</span></header><div className="live-message-list">{!raceControlHistory.length && <p className="empty-state">공식 메시지를 기다리고 있습니다.</p>}{raceControlHistory.map((message, index) => <article key={`${value(message, "Utc")}-${value(message, "Message")}-${index}`}><time>{value(message, "Utc").slice(11, 19) || "—"}</time><p>{value(message, "Message") || value(message, "Category")}</p></article>)}</div></section>
-        <section className="panel live-feed-panel radio-panel"><header><div><p className="eyebrow">TEAM RADIO</p><h3>팀 라디오</h3></div><label className="radio-translation-toggle"><span>한국어 번역</span><input checked={radioTranslationEnabled} onChange={(change) => setRadioTranslationEnabled(change.target.checked)} type="checkbox" /><i /></label></header><div className="live-message-list radio-list">{!snapshot?.teamRadio.length && <p className="empty-state">공개된 팀 라디오를 기다리고 있습니다.</p>}{snapshot?.teamRadio.map((radio, index) => {
+        <div className={`live-track-slot ${mobilePanel === "track" ? "mobile-active" : ""}`}><TrackReplay event={event} selectedDriverNumber={selectedDriverNumber} /></div>
+        <section className={`panel live-feed-panel control-panel ${mobilePanel === "control" ? "mobile-active" : ""}`}><header><div><p className="eyebrow">RACE CONTROL</p><h3>레이스 컨트롤</h3></div><span>{raceControlHistory.length} MESSAGES</span></header><div className="live-message-list">{!raceControlHistory.length && <p className="empty-state">공식 메시지를 기다리고 있습니다.</p>}{raceControlHistory.map((message, index) => <article key={`${value(message, "Utc")}-${value(message, "Message")}-${index}`}><time>{value(message, "Utc").slice(11, 19) || "—"}</time><p>{value(message, "Message") || value(message, "Category")}</p></article>)}</div></section>
+        <section className={`panel live-feed-panel radio-panel ${mobilePanel === "radio" ? "mobile-active" : ""}`}><header><div><p className="eyebrow">TEAM RADIO</p><h3>팀 라디오</h3></div><label className="radio-translation-toggle"><span>한국어 번역</span><input checked={radioTranslationEnabled} onChange={(change) => setRadioTranslationEnabled(change.target.checked)} type="checkbox" /><i /></label></header><div className="live-message-list radio-list">{!snapshot?.teamRadio.length && <p className="empty-state">공개된 팀 라디오를 기다리고 있습니다.</p>}{snapshot?.teamRadio.map((radio, index) => {
           const path = value(radio, "Path");
           const sessionPath = value(radio, "SessionPath");
           const audioUrl = value(radio, "AudioUrl");
           const transcript = radioTranscripts[path];
+          const isOpen = openRadioPath === path;
           const racingNumber = value(radio, "RacingNumber");
           const driver = snapshot?.drivers.find((item) => item.number === racingNumber);
           const utc = value(radio, "Utc");
           const published = utc ? new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Seoul" }).format(new Date(utc)) : "시간 정보 없음";
           return <article className="radio-card" key={`${utc}-${index}`} style={{ "--driver-colour": driver?.colour || "#e10600" } as React.CSSProperties}>
-            <div className="radio-driver"><span>#{racingNumber || "—"}</span><div><small>{driver?.team || "FORMULA 1"}</small><b>{driver?.name || driver?.code || `CAR ${racingNumber || "—"}`}</b></div><time>{published}</time></div>
-            <div className="radio-player">{(transcript?.audioUrl || audioUrl) && <audio controls preload="metadata" src={transcript?.audioUrl || audioUrl}>팀 라디오 오디오</audio>}</div>
-            <div className="radio-transcript" role="status">{!transcript && <p>팀 라디오 내용을 불러오는 중입니다…</p>}{transcript?.status === "loading" && <p>팀 라디오 음성을 텍스트로 변환하고 있습니다…</p>}{transcript?.status === "failed" && <p>텍스트 변환에 실패했습니다. 위 재생 버튼으로 음성을 들을 수 있습니다.</p>}{transcript?.status === "ready" && <>{radioTranslationEnabled && transcript.translation && <p className="translated"><i />{transcript.translation}</p>}<p className={radioTranslationEnabled && transcript.translation ? "original" : ""}><i />{transcript.text || "명확한 발화를 인식하지 못했습니다."}</p></>}</div>
+            <button className="radio-card-toggle" type="button" aria-expanded={isOpen} onClick={() => { setOpenRadioPath(isOpen ? "" : path); if (!isOpen && !transcript) loadRadioTranscript(path, sessionPath, audioUrl); }}><span className="radio-driver"><span>#{racingNumber || "—"}</span><span className="radio-driver-name"><small>{driver?.team || "FORMULA 1"}</small><b>{driver?.name || driver?.code || `CAR ${racingNumber || "—"}`}</b></span><time>{published}</time></span><span className="radio-expand-label">{isOpen ? "접기" : "듣기 · 자막 확인"}</span></button>
+            {isOpen && <><div className="radio-player">{(transcript?.audioUrl || audioUrl) && <audio controls preload="metadata" src={transcript?.audioUrl || audioUrl}>팀 라디오 오디오</audio>}</div>
+            <div className="radio-transcript" role="status">{!transcript && <p>자막 제공 여부를 확인하는 중입니다…</p>}{transcript?.status === "loading" && <p>자막을 확인하는 중입니다…</p>}{transcript?.status === "unavailable" && <p>이 라디오의 자막은 아직 제공되지 않습니다. 음성으로 확인해 주세요.</p>}{transcript?.status === "failed" && <p>자막을 불러오지 못했습니다. 음성으로 확인해 주세요.</p>}{transcript?.status === "ready" && <>{radioTranslationEnabled && transcript.translation && <p className="translated"><i />{transcript.translation}</p>}<p className={radioTranslationEnabled && transcript.translation ? "original" : ""}><i />{transcript.text}</p></>}</div></>}
           </article>;
         })}</div></section>
       </aside>

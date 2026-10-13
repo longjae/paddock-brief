@@ -16,6 +16,7 @@ from typing import Any
 
 import httpx
 import websockets
+from supabase import create_client
 
 from app.core.config import Settings
 
@@ -111,6 +112,7 @@ class LiveTimingService:
         self.topics: dict[str, Any] = {}
         self.radio_transcripts: dict[str, str] = {}
         self.radio_translations: dict[str, str] = {}
+        self.radio_store = create_client(settings.supabase_url, settings.supabase_key) if settings.supabase_configured and not settings.app_use_sample_data else None
         self.race_control_history: dict[str, dict[str, Any]] = {}
         self._session_path: str | None = None
         self._task: asyncio.Task[None] | None = None
@@ -142,6 +144,20 @@ class LiveTimingService:
 
     async def transcribe_team_radio(self, path: str, session_path: str) -> dict[str, str | None]:
         audio_url = team_radio_audio_url(path, session_path)
+        if self.radio_store is not None:
+            try:
+                stored = await asyncio.to_thread(
+                    lambda: self.radio_store.table("team_radio_transcripts")
+                    .select("transcript,translation")
+                    .eq("session_path", session_path)
+                    .eq("path", path)
+                    .limit(1)
+                    .execute()
+                )
+                if stored.data:
+                    return {"audioUrl": audio_url, "transcript": stored.data[0]["transcript"], "translation": stored.data[0].get("translation"), "language": "en"}
+            except Exception:
+                LOGGER.warning("Stored team radio transcript unavailable for %s", path, exc_info=True)
         if path in self.radio_transcripts:
             return {
                 "audioUrl": audio_url,
