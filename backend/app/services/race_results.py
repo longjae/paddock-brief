@@ -68,7 +68,7 @@ def public_classification_snapshot(race: dict[str, Any], stints: list[dict[str, 
             "colour": f"#{colours.get(number) or '888888'}",
             "compound": compound if compound in VALID_COMPOUNDS else None,
             "tyreAge": tyre_age if compound in VALID_COMPOUNDS else None,
-            "gap": "WINNER" if position == 1 else (time if str(time).startswith("+") else status),
+            "gap": "WINNER" if position == 1 else (time if status == "Finished" and str(time).startswith("+") else status),
         })
     if not drivers:
         raise ValueError("No classified drivers in Jolpica results")
