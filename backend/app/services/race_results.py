@@ -7,7 +7,7 @@ import httpx
 from app.services.fastf1_sync import VALID_COMPOUNDS, normalized_name, safe_number
 
 
-def fetch_public_results(season: int, round_number: int, country: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+def fetch_public_results(season: int, round_number: int, country: str) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
     """Get the published classification and optional last tyre stint."""
     with httpx.Client(timeout=20) as client:
         response = client.get(f"https://api.jolpi.ca/ergast/f1/{season}/{round_number}/results.json", params={"limit": 100})
@@ -21,6 +21,7 @@ def fetch_public_results(season: int, round_number: int, country: str) -> tuple[
             raise ValueError("Jolpica has not published race results")
 
         stints: list[dict[str, Any]] = []
+        driver_details: list[dict[str, Any]] = []
         try:
             sessions_response = client.get("https://api.openf1.org/v1/sessions", params={"year": season, "country_name": country, "session_name": "Race"})
             sessions_response.raise_for_status()
@@ -31,12 +32,16 @@ def fetch_public_results(season: int, round_number: int, country: str) -> tuple[
                 stint_response = client.get("https://api.openf1.org/v1/stints", params={"session_key": matching[0]["session_key"]})
                 stint_response.raise_for_status()
                 stints = stint_response.json()
+                driver_response = client.get("https://api.openf1.org/v1/drivers", params={"session_key": matching[0]["session_key"]})
+                driver_response.raise_for_status()
+                driver_details = driver_response.json()
         except (httpx.HTTPError, ValueError, KeyError):
             pass  # Classification is still useful when tyre data is unavailable.
-    return race, stints
+    return race, stints, driver_details
 
 
-def public_classification_snapshot(race: dict[str, Any], stints: list[dict[str, Any]]) -> dict[str, Any]:
+def public_classification_snapshot(race: dict[str, Any], stints: list[dict[str, Any]], driver_details: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    colours = {int(safe_number(driver.get("driver_number"))): str(driver.get("team_colour") or "").lstrip("#") for driver in driver_details or []}
     latest_stint: dict[int, dict[str, Any]] = {}
     for stint in stints:
         number = int(safe_number(stint.get("driver_number")))
@@ -60,7 +65,7 @@ def public_classification_snapshot(race: dict[str, Any], stints: list[dict[str, 
             "code": person["code"],
             "name": f"{person.get('givenName', '')} {person.get('familyName', '')}".strip(),
             "team": (result.get("Constructor") or {}).get("name") or "Unknown",
-            "colour": "#888888",
+            "colour": f"#{colours.get(number) or '888888'}",
             "compound": compound if compound in VALID_COMPOUNDS else None,
             "tyreAge": tyre_age if compound in VALID_COMPOUNDS else None,
             "gap": "WINNER" if position == 1 else (time if str(time).startswith("+") else status),

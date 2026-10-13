@@ -89,8 +89,8 @@ def main() -> int:
                 if not state["drivers"] or not lap_rows:
                     raise ValueError("FastF1 classification or lap data unavailable")
             except Exception:
-                race, stints = fetch_public_results(int(event["season"]), int(event["round"]), str(event["country"]))
-                state = public_classification_snapshot(race, stints)
+                race, stints, driver_details = fetch_public_results(int(event["season"]), int(event["round"]), str(event["country"]))
+                state = public_classification_snapshot(race, stints, driver_details)
                 result_rows = []
                 lap_rows = [{"LapNumber": stint.get("lap_end")} for stint in stints]
             if not args.dry_run:
