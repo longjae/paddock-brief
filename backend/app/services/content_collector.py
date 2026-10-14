@@ -57,7 +57,7 @@ class YouTubeSource:
 
 
 MEDIA_FEED_SOURCES = (
-    MediaFeedSource("bbc-sport-f1", "BBC Sport F1", "https://www.bbc.com/sport/formula1", "https://feeds.bbci.co.uk/sport/formula1/rss.xml"),
+    MediaFeedSource("bbc-sport-f1", "BBC Sport F1", "https://www.bbc.co.uk/sport/formula1", "https://feeds.bbci.co.uk/sport/formula1/rss.xml"),
     MediaFeedSource("racefans", "RaceFans", "https://www.racefans.net/", "https://www.racefans.net/feed/"),
     MediaFeedSource("sky-sports-f1", "Sky Sports F1", "https://www.skysports.com/f1", "https://www.skysports.com/rss/12040"),
 )
@@ -288,6 +288,7 @@ def discover_fia_transcript_urls(page_html: str) -> set[str]:
 def discover_feed_article_urls(feed_xml: str, source: MediaFeedSource, limit: int = 12) -> set[str]:
     root = ElementTree.fromstring(feed_xml)
     source_host = (urlparse(source.base_url).hostname or "").removeprefix("www.")
+    allowed_hosts = {source_host, "bbc.com"} if source.code == "bbc-sport-f1" else {source_host}
     urls: set[str] = set()
     for element in root.iter():
         if element.tag.rsplit("}", 1)[-1] not in {"link", "guid"}:
@@ -296,7 +297,7 @@ def discover_feed_article_urls(feed_xml: str, source: MediaFeedSource, limit: in
         if not candidate.startswith(("http://", "https://")):
             continue
         host = (urlparse(candidate).hostname or "").removeprefix("www.")
-        if host == source_host or host.endswith(f".{source_host}"):
+        if any(host == allowed or host.endswith(f".{allowed}") for allowed in allowed_hosts):
             urls.add(canonicalize_web_url(candidate, source.base_url))
             if len(urls) >= limit:
                 break
@@ -334,7 +335,7 @@ def parse_article(url: str, page_html: str) -> SourceDocument:
         title=html.unescape(title),
         description=html.unescape(description),
         author=metadata.get("author") or "Formula 1",
-        published_at=metadata.get("article:published_time") or metadata.get("date"),
+        published_at=metadata.get("article:published_time") or metadata.get("date") or (re.search(r'"datePublished"\s*:\s*"([^"]+)"', page_html) or [None, None])[1],
         paragraphs=paragraphs,
     )
 

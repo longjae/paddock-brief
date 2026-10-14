@@ -38,6 +38,20 @@ def test_summary_schema_is_strict_and_requires_long_form_content() -> None:
     assert schema["$defs"]["SummarySection"]["properties"]["body"]["minLength"] == 120
 
 
+def test_official_article_uses_structured_publication_date() -> None:
+    article = parse_article(
+        "https://www.formula1.com/en/latest/article/example.123",
+        '<script type="application/ld+json">{"datePublished":"2026-10-14T16:37:30Z"}</script><h2>Race update with enough heading text</h2>',
+    )
+    assert article.published_at == "2026-10-14T16:37:30Z"
+
+
+def test_bbc_feed_discovers_bbc_co_uk_links() -> None:
+    source = MEDIA_FEED_SOURCES[0]
+    xml = '<rss><channel><item><link>https://www.bbc.co.uk/sport/formula1/articles/example?at_medium=RSS</link></item></channel></rss>'
+    assert discover_feed_article_urls(xml, source) == {"https://bbc.co.uk/sport/formula1/articles/example"}
+
+
 def test_youtube_json3_subtitle_is_flattened_without_timing_metadata() -> None:
     payload = '{"events":[{"tStartMs":1000,"segs":[{"utf8":"Hello "},{"utf8":"paddock"}]},{"segs":[{"utf8":"Next lap"}]}]}'
     assert parse_youtube_subtitle(payload, ".json3") == "Hello paddock Next lap"

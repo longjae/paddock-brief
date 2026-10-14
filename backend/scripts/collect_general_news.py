@@ -80,9 +80,12 @@ def main() -> int:
     now = datetime.now(timezone.utc)
     inserted = 0
     fresh = 0
+    inserted_by_source: dict[str, int] = {}
     for code, name, base_url, official, url in candidates:
         if inserted >= args.max_articles:
             break
+        if inserted_by_source.get(code, 0) >= max(2, (args.max_articles + 1) // 2):
+            continue
         if canonicalize_web_url(url, base_url) in existing:
             continue
         try:
@@ -93,10 +96,12 @@ def main() -> int:
             fresh += 1
             if args.discovery_only:
                 inserted += 1
+                inserted_by_source[code] = inserted_by_source.get(code, 0) + 1
                 continue
             summary = collector.summarizer.summarize(document, teams, drivers)
             if args.dry_run:
                 inserted += 1
+                inserted_by_source[code] = inserted_by_source.get(code, 0) + 1
                 continue
             source_id = collector.ensure_source(code, name, base_url, "official-editorial" if official else "media", is_official=official)
             database.table("general_news").upsert({
@@ -115,6 +120,7 @@ def main() -> int:
             }, on_conflict="source_url").execute()
             existing.add(document.url)
             inserted += 1
+            inserted_by_source[code] = inserted_by_source.get(code, 0) + 1
         except Exception as exc:
             errors.append(f"{url}: {type(exc).__name__}: {exc}")
     print(json.dumps({"ok": bool(candidates), "discovered": len(candidates), "fresh": fresh, "inserted": inserted, "errors": errors}, ensure_ascii=False))
