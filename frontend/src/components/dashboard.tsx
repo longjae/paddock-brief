@@ -25,6 +25,7 @@ type ModalContent = {
   participants: string[];
   colour: string;
   detailLabel: string;
+  publishedAt?: string | null;
 };
 
 export type MainSection = "weekend" | "interviews" | "championship" | "live" | "glossary";
@@ -293,6 +294,7 @@ function newsModalContent(article: NewsArticle, colour: string, driverName?: str
     participants: [driverName, article.author].filter((value): value is string => Boolean(value)),
     colour,
     detailLabel: "기사 구조별 상세 한국어 요약",
+    publishedAt: article.publishedAt,
   };
 }
 
@@ -321,6 +323,7 @@ function Tyre({ compound, age }: { compound: string; age: number }) {
 }
 
 function ContentDetailModal({ item, onClose }: { item: ModalContent; onClose: () => void }) {
+  const openedAt = Date.now();
   const detailSections = item.detailedSummary
     .split(/\n\s*\n/)
     .map((section) => section.split("\n").filter(Boolean))
@@ -346,6 +349,7 @@ function ContentDetailModal({ item, onClose }: { item: ModalContent; onClose: ()
         <div className="content-modal-scroll">
           <div className="modal-meta"><span>{item.context}</span><em>{item.source}</em></div>
           <h3 id="content-modal-title">{item.title}</h3>
+          {item.publishedAt && <p className="modal-publication">원문 {publicationLabel(item.publishedAt, openedAt)}{openedAt - publishedTime(item.publishedAt) > 48 * 60 * 60 * 1000 && <strong>지난 보도</strong>}</p>}
           <div className="modal-summary" id="content-modal-summary">
             <small>한눈에 보기</small>
             <p>{item.summary}</p>
@@ -578,7 +582,7 @@ export function Dashboard({
   const freshReports = candidateReports.filter((article) => currentTime > 0 && currentTime - publishedTime(article.publishedAt) <= 48 * 60 * 60 * 1000 && publishedTime(article.publishedAt) <= currentTime);
   const prioritizedReports = freshReports.length > 0 ? freshReports : candidateReports;
   const leadReports = [...prioritizedReports.filter((article) => article.category === "race-report" || article.category === "analysis"), ...prioritizedReports.filter((article) => article.category !== "race-report" && article.category !== "analysis")].slice(0, 3);
-  const latestReport = recentReports[0];
+  const latestReport = candidateReports[0];
   const hasFreshReports = freshReports.length > 0;
   const todayKey = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "Asia/Seoul" });
   const hasTodayReports = hasFreshReports && todayKey.format(publishedTime(freshReports[0].publishedAt)) === todayKey.format(currentTime);
