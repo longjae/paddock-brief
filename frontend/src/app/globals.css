@@ -735,3 +735,13 @@ footer { display: flex; justify-content: space-between; padding: 20px 2px 34px; 
   .live-shell .mini-sector-time { font-size: 11px; }
   .live-shell .live-tyre-usage :is(b, small) { font-size: 9px; }
 }
+
+@media (max-width: 640px) {
+  .live-shell .live-record-strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; overflow: visible; }
+  .live-shell .live-record-strip article { min-width: 0; min-height: 56px; padding: 7px 9px; }
+  .live-shell .live-mobile-nav { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .live-shell .live-mobile-nav button { font-size: 12px; }
+  .live-shell .live-tower-list > article { grid-template-columns: 24px minmax(0, 1fr) 105px; }
+  .live-shell .live-tyre-image { flex-basis: 38px; }
+  .live-shell .live-tyre-usage :is(b, small) { font-size: 11px; }
+}
