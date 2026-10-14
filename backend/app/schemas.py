@@ -130,6 +130,7 @@ class EventDetail(BaseModel):
     circuit: str
     trackMapUrl: str | None = None
     dateLabel: str
+    gmtOffset: str | None = None
     mediaOpenAt: str | None = None
     mediaOpenLabel: str = "레이스 주 목요일 · 개최지 현지시간"
     sessions: list[Session]

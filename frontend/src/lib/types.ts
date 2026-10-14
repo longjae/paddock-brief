@@ -89,6 +89,7 @@ export type EventDetail = {
   circuit: string;
   trackMapUrl?: string | null;
   dateLabel: string;
+  gmtOffset?: string | null;
   mediaOpenAt?: string | null;
   mediaOpenLabel: string;
   sessions: Session[];

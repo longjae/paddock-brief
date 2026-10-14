@@ -116,6 +116,7 @@ h1 { font-size: clamp(46px, 6vw, 84px); letter-spacing: -.065em; line-height: .9
 .page-heading p:last-child { margin: 10px 0 0; color: var(--muted); font-size: 13px; }
 .page-heading > a { flex: 0 0 auto; padding: 11px 14px; color: #fff; background: var(--f1-red); border-radius: 7px; font: 800 9px var(--font-mono); }
 .weekend-days { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.weekend-time-note { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
 .weekend-day { min-width: 0; padding: 20px; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; }
 .weekend-day > header { display: flex; gap: 12px; align-items: center; }
 .weekend-day > header > span { display: grid; place-items: center; width: 46px; height: 46px; color: #fff; background: var(--f1-red); border-radius: 4px 13px 4px 4px; font: 900 11px var(--font-mono); }

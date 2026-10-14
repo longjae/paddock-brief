@@ -158,6 +158,7 @@ class OpenF1Service:
                 "circuit": meeting["location"],
                 "trackMapUrl": meeting.get("circuit_image"),
                 "dateLabel": self._date_label(meeting["date_start"], meeting["date_end"]),
+                "gmtOffset": meeting.get("gmt_offset"),
                 **media_window(meeting["date_end"], meeting.get("gmt_offset", "+00:00:00")),
                 "sessions": session_payload,
                 "videos": videos,

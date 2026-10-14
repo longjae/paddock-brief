@@ -9,6 +9,7 @@ export const demoEvent: EventDetail = {
   circuit: "Marina Bay Street Circuit",
   trackMapUrl: "https://media.formula1.com/content/dam/fom-website/2018-redesign-assets/Track%20icons%204x3/Singapore%20carbon.png",
   dateLabel: "2026-10-09 — 2026-10-11 · KST",
+  gmtOffset: "+08:00:00",
   mediaOpenAt: "2026-10-07T16:00:00+00:00",
   mediaOpenLabel: "10월 8일 목요일 · 개최지 현지시간",
   sessions: [
