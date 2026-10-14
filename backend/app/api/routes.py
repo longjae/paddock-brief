@@ -4,6 +4,7 @@ import time
 import httpx
 import asyncio
 import json
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -15,8 +16,18 @@ from app.services.jolpica import JolpicaService, get_jolpica_service
 from app.services.repository import EventRepository, get_repository
 from app.services.openf1 import OpenF1Service, get_openf1_service
 from app.services.live_timing import LiveTimingService, get_live_timing_service
+from app.services.live_snapshot_store import get_live_snapshot_store
 
 router = APIRouter()
+LOGGER = logging.getLogger(__name__)
+
+
+async def persisted_live_state(slug: str) -> dict[str, Any] | None:
+    try:
+        return await get_live_snapshot_store().latest(slug)
+    except Exception:
+        LOGGER.warning("Saved live timing state unavailable for %s", slug, exc_info=True)
+        return None
 
 
 @router.get("/health", response_model=Health)
@@ -127,6 +138,9 @@ async def get_race_state(
     live = get_live_timing_service().snapshot(slug)
     if live["drivers"]:
         return live
+    saved = await persisted_live_state(slug)
+    if saved:
+        return saved
     live["drivers"] = [driver.model_dump() for driver in event.drivers]
     return live
 
@@ -186,10 +200,18 @@ async def live_timing_events(
     collector = LiveTimingService(settings)
     collector.start()
     started = time.monotonic()
+    last_saved_check = 0.0
+    saved: dict[str, Any] | None = None
     try:
         yield "retry: 1000\n\n"
         while time.monotonic() - started < max_duration_seconds and not await request.is_disconnected():
             payload = collector.snapshot(slug)
+            if not payload["drivers"]:
+                if time.monotonic() - last_saved_check >= 10:
+                    saved = await persisted_live_state(slug)
+                    last_saved_check = time.monotonic()
+                if saved:
+                    payload = saved
             yield f"event: timing\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
             await asyncio.sleep(interval_seconds)
     finally:

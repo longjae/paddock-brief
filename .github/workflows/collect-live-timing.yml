@@ -1,0 +1,45 @@
+name: Collect live timing snapshots
+
+on:
+  schedule:
+    - cron: "7,22,37,52 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "활성 세션 확인만 수행"
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: collect-live-timing
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      APP_USE_SAMPLE_DATA: "false"
+      LIVE_TIMING_ENABLED: "true"
+      DRY_RUN: ${{ inputs.dry_run }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Install dependencies
+        run: uv sync --frozen
+      - name: Collect active session
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            uv run python scripts/collect_live_timing.py --dry-run
+          else
+            uv run python scripts/collect_live_timing.py
+          fi

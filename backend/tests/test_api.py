@@ -125,8 +125,8 @@ def test_live_stream_uses_one_collector_and_stops_it(monkeypatch) -> None:
         def start(self) -> None:
             self.started = True
 
-        def snapshot(self, slug: str) -> dict[str, str]:
-            return {"event": slug, "connection": "live"}
+        def snapshot(self, slug: str) -> dict[str, object]:
+            return {"event": slug, "connection": "live", "drivers": [{"code": "TST"}]}
 
         async def stop(self) -> None:
             self.stopped = True
@@ -152,6 +152,37 @@ def test_live_stream_uses_one_collector_and_stops_it(monkeypatch) -> None:
     asyncio.run(check())
     assert collector.started is True
     assert collector.stopped is True
+
+
+def test_live_stream_falls_back_to_saved_state_until_feed_connects(monkeypatch) -> None:
+    class Collector:
+        def start(self) -> None:
+            pass
+
+        def snapshot(self, slug: str) -> dict[str, object]:
+            return {"event": slug, "drivers": []}
+
+        async def stop(self) -> None:
+            pass
+
+    class RequestStub:
+        async def is_disconnected(self) -> bool:
+            return False
+
+    async def saved(slug: str) -> dict[str, object]:
+        return {"event": slug, "connection": "offline", "drivers": [{"code": "TST"}]}
+
+    monkeypatch.setattr(routes, "LiveTimingService", lambda _settings: Collector())
+    monkeypatch.setattr(routes, "persisted_live_state", saved)
+
+    async def check() -> None:
+        stream = routes.live_timing_events("2026-test", RequestStub(), Settings(app_use_sample_data=True))
+        await anext(stream)
+        frame = await anext(stream)
+        assert '"code": "TST"' in frame
+        await stream.aclose()
+
+    asyncio.run(check())
 
 
 def test_lap_comparison_requires_two_different_drivers() -> None:

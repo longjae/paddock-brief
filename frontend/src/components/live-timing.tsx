@@ -138,7 +138,7 @@ export function LiveTiming({ event }: { event: EventDetail }) {
   const connection = snapshot?.connection ?? (streamState === "retrying" ? "reconnecting" : "connecting");
   const feedAgeSeconds = snapshot?.updatedAt && clockTime ? Math.max(0, Math.floor((clockTime - new Date(snapshot.updatedAt).getTime()) / 1000)) : null;
   const feedStale = !sessionEnded && snapshot?.isLive && feedAgeSeconds !== null && feedAgeSeconds > 30;
-  const statusLabel = upcomingRace ? "레이스 예정" : sessionEnded ? "종료 세션 · 마지막 기록" : feedStale ? "데이터 갱신 지연" : connection === "live" && !snapshot?.isLive ? "피드 연결 · 세션 대기" : STATUS_LABEL[connection];
+  const statusLabel = sessionEnded ? "종료 세션 · 마지막 기록" : feedStale ? "데이터 갱신 지연" : snapshot?.isLive ? "실시간" : snapshot?.delaySeconds !== null && snapshot?.delaySeconds !== undefined && snapshot.drivers.length ? "저장된 마지막 기록" : upcomingRace ? "레이스 예정" : connection === "live" ? "피드 연결 · 세션 대기" : STATUS_LABEL[connection];
   const weather = snapshot?.weather ?? {};
 
   return <section className="section-page live-page" id="live">
