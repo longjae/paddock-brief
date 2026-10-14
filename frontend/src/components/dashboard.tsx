@@ -32,6 +32,14 @@ type WeekendDay = "목요일" | "금요일" | "토요일" | "일요일";
 
 const WEEKEND_DAYS: WeekendDay[] = ["목요일", "금요일", "토요일", "일요일"];
 const WEEKEND_DAY_CODES: Record<WeekendDay, string> = { 목요일: "THU", 금요일: "FRI", 토요일: "SAT", 일요일: "SUN" };
+const EVENT_TIME_ZONES: Record<string, string> = {
+  australian: "Australia/Melbourne", chinese: "Asia/Shanghai", japanese: "Asia/Tokyo", miami: "America/New_York",
+  canadian: "America/Toronto", monaco: "Europe/Monaco", barcelona: "Europe/Madrid", austrian: "Europe/Vienna",
+  british: "Europe/London", belgian: "Europe/Brussels", hungarian: "Europe/Budapest", dutch: "Europe/Amsterdam",
+  italian: "Europe/Rome", spanish: "Europe/Madrid", azerbaijan: "Asia/Baku", bahrain: "Asia/Kuala_Lumpur",
+  singapore: "Asia/Singapore", "united-states": "America/Chicago", "mexico-city": "America/Mexico_City",
+  brazilian: "America/Sao_Paulo", "las-vegas": "America/Los_Angeles", qatar: "Asia/Qatar", "abu-dhabi": "Asia/Dubai",
+};
 const GP_KOREAN_KEYWORDS: Record<string, string[]> = {
   australian: ["호주", "멜버른"], chinese: ["중국", "상하이"], japanese: ["일본", "스즈카"], miami: ["마이애미"],
   canadian: ["캐나다", "몬트리올"], monaco: ["모나코"], barcelona: ["바르셀로나"], austrian: ["오스트리아", "슈필베르크"],
@@ -145,15 +153,21 @@ function TeamLogo({ teamCode, teamName, className = "" }: { teamCode: string; te
   );
 }
 
-function localSessionDate(session: EventDetail["sessions"][number], gmtOffset?: string | null): Date | null {
-  const match = gmtOffset?.match(/^([+-])(\d{2}):(\d{2})(?::\d{2})?$/);
+function localSessionDate(session: EventDetail["sessions"][number], event: EventDetail): Date | null {
+  const timeZone = EVENT_TIME_ZONES[event.slug.replace(/^\d{4}-/, "")];
+  if (timeZone) {
+    const parts = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(sessionTime(session.startsAt)));
+    const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    return new Date(Date.UTC(Number(value.year), Number(value.month) - 1, Number(value.day), Number(value.hour), Number(value.minute)));
+  }
+  const match = event.gmtOffset?.match(/^([+-])(\d{2}):(\d{2})(?::\d{2})?$/);
   if (!match) return null;
   const offsetMinutes = (match[1] === "-" ? -1 : 1) * (Number(match[2]) * 60 + Number(match[3]));
   return new Date(sessionTime(session.startsAt) - 9 * 60 * 60_000 + offsetMinutes * 60_000);
 }
 
-function sessionDay(session: EventDetail["sessions"][number], gmtOffset?: string | null): WeekendDay {
-  const local = localSessionDate(session, gmtOffset);
+function sessionDay(session: EventDetail["sessions"][number], event: EventDetail): WeekendDay {
+  const local = localSessionDate(session, event);
   if (local) {
     const day = local.getUTCDay();
     if (day === 4) return "목요일";
@@ -166,8 +180,8 @@ function sessionDay(session: EventDetail["sessions"][number], gmtOffset?: string
   return "일요일";
 }
 
-function localSessionLabel(session: EventDetail["sessions"][number], gmtOffset?: string | null): string | null {
-  const local = localSessionDate(session, gmtOffset);
+function localSessionLabel(session: EventDetail["sessions"][number], event: EventDetail): string | null {
+  const local = localSessionDate(session, event);
   if (!local) return null;
   const month = String(local.getUTCMonth() + 1).padStart(2, "0");
   const day = String(local.getUTCDate()).padStart(2, "0");
@@ -648,13 +662,13 @@ export function Dashboard({
           </div>
           <p className="weekend-time-note">세션은 개최지 현지 요일로 묶었습니다. 시작 시각에는 한국 시간도 함께 표시합니다.</p>
           <div className="weekend-days">
-            {WEEKEND_DAYS.filter((day) => event.sessions.some((session) => sessionDay(session, event.gmtOffset) === day)).map((day) => {
-              const sessions = event.sessions.filter((session) => sessionDay(session, event.gmtOffset) === day);
+            {WEEKEND_DAYS.filter((day) => event.sessions.some((session) => sessionDay(session, event) === day)).map((day) => {
+              const sessions = event.sessions.filter((session) => sessionDay(session, event) === day);
               return (
                 <article className="weekend-day" key={day}>
                   <header><span>{WEEKEND_DAY_CODES[day]}</span><div><h3>{day}</h3><small>{sessions.length} SESSIONS</small></div></header>
                   <div className="day-sessions">
-                    {sessions.map((session) => <div className={session.status} key={session.shortName}><b>{session.shortName}</b><span>{session.name}</span><small>{localSessionLabel(session, event.gmtOffset) ? `현지 ${localSessionLabel(session, event.gmtOffset)} · ` : ""}한국 ${session.startsAt}</small><em>{session.status === "live" ? "LIVE" : session.status === "done" ? "완료" : currentTime > 0 && sessionTime(session.startsAt) < currentTime ? "시간 경과" : "예정"}</em></div>)}
+                    {sessions.map((session) => <div className={session.status} key={session.shortName}><b>{session.shortName}</b><span>{session.name}</span><small>{localSessionLabel(session, event) ? `현지 ${localSessionLabel(session, event)} · ` : ""}한국 ${session.startsAt}</small><em>{session.status === "live" ? "LIVE" : session.status === "done" ? "완료" : currentTime > 0 && sessionTime(session.startsAt) < currentTime ? "시간 경과" : "예정"}</em></div>)}
                   </div>
                   <p>{day === "목요일" ? "현지 목요일에 시작하는 세션의 기록을 확인합니다." : day === "금요일" ? "연습주행 페이스, 셋업 변화와 타이어 롱런을 확인합니다." : day === "토요일" ? "스프린트와 예선 결과, 결승 그리드를 정리합니다." : "레이스 결과, 전략, 타이어와 경기 후 반응을 함께 확인합니다."}</p>
                 </article>
