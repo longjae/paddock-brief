@@ -36,7 +36,7 @@ const EVENT_TIME_ZONES: Record<string, string> = {
   australian: "Australia/Melbourne", chinese: "Asia/Shanghai", japanese: "Asia/Tokyo", miami: "America/New_York",
   canadian: "America/Toronto", monaco: "Europe/Monaco", barcelona: "Europe/Madrid", austrian: "Europe/Vienna",
   british: "Europe/London", belgian: "Europe/Brussels", hungarian: "Europe/Budapest", dutch: "Europe/Amsterdam",
-  italian: "Europe/Rome", spanish: "Europe/Madrid", azerbaijan: "Asia/Baku", bahrain: "Asia/Kuala_Lumpur",
+  italian: "Europe/Rome", spanish: "Europe/Madrid", azerbaijan: "Asia/Baku", bahrain: "Asia/Bahrain",
   singapore: "Asia/Singapore", "united-states": "America/Chicago", "mexico-city": "America/Mexico_City",
   brazilian: "America/Sao_Paulo", "las-vegas": "America/Los_Angeles", qatar: "Asia/Qatar", "abu-dhabi": "Asia/Dubai",
 };
@@ -154,7 +154,9 @@ function TeamLogo({ teamCode, teamName, className = "" }: { teamCode: string; te
 }
 
 function localSessionDate(session: EventDetail["sessions"][number], event: EventDetail): Date | null {
-  const timeZone = EVENT_TIME_ZONES[event.slug.replace(/^\d{4}-/, "")];
+  const timeZone = event.slug.endsWith("-bahrain") && /malaysia|sepang/i.test(`${event.name} ${event.country} ${event.circuit}`)
+    ? "Asia/Kuala_Lumpur"
+    : EVENT_TIME_ZONES[event.slug.replace(/^\d{4}-/, "")];
   if (timeZone) {
     const parts = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(sessionTime(session.startsAt)));
     const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
@@ -188,6 +190,12 @@ function localSessionLabel(session: EventDetail["sessions"][number], event: Even
   const hour = String(local.getUTCHours()).padStart(2, "0");
   const minute = String(local.getUTCMinutes()).padStart(2, "0");
   return `${month}/${day} ${hour}:${minute}`;
+}
+
+function weekendDayDescription(sessions: EventDetail["sessions"]): string {
+  if (sessions.some((session) => session.shortName === "R")) return "레이스 결과, 전략, 타이어와 경기 후 반응을 함께 확인합니다.";
+  if (sessions.some((session) => ["Q", "S", "SQ"].includes(session.shortName))) return "스프린트와 예선 결과, 결승 그리드를 확인합니다.";
+  return "연습주행 페이스, 셋업 변화와 타이어 롱런을 확인합니다.";
 }
 
 function publishedDay(value?: string | null): string {
@@ -666,11 +674,11 @@ export function Dashboard({
               const sessions = event.sessions.filter((session) => sessionDay(session, event) === day);
               return (
                 <article className="weekend-day" key={day}>
-                  <header><span>{WEEKEND_DAY_CODES[day]}</span><div><h3>{day}</h3><small>{sessions.length} SESSIONS</small></div></header>
+                  <header><span>{WEEKEND_DAY_CODES[day]}</span><div><h3>{day}</h3><small>{sessions.length}개 세션</small></div></header>
                   <div className="day-sessions">
-                    {sessions.map((session) => <div className={session.status} key={session.shortName}><b>{session.shortName}</b><span>{session.name}</span><small>{localSessionLabel(session, event) ? `현지 ${localSessionLabel(session, event)} · ` : ""}한국 ${session.startsAt}</small><em>{session.status === "live" ? "LIVE" : session.status === "done" ? "완료" : currentTime > 0 && sessionTime(session.startsAt) < currentTime ? "시간 경과" : "예정"}</em></div>)}
+                    {sessions.map((session) => <div className={session.status} key={session.shortName}><b>{session.shortName}</b><span>{session.name}</span><small>{localSessionLabel(session, event) ? `현지 ${localSessionLabel(session, event)} · ` : ""}한국 {session.startsAt}</small><em>{session.status === "live" ? "LIVE" : session.status === "done" ? "완료" : currentTime > 0 && sessionTime(session.startsAt) < currentTime ? "시간 경과" : "예정"}</em></div>)}
                   </div>
-                  <p>{day === "목요일" ? "현지 목요일에 시작하는 세션의 기록을 확인합니다." : day === "금요일" ? "연습주행 페이스, 셋업 변화와 타이어 롱런을 확인합니다." : day === "토요일" ? "스프린트와 예선 결과, 결승 그리드를 정리합니다." : "레이스 결과, 전략, 타이어와 경기 후 반응을 함께 확인합니다."}</p>
+                  <p>{weekendDayDescription(sessions)}</p>
                 </article>
               );
             })}
