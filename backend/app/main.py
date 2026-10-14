@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,7 +15,8 @@ async def lifespan(_: FastAPI):
     from app.services.live_timing import get_live_timing_service
 
     live_timing = get_live_timing_service(settings)
-    live_timing.start()
+    if not os.getenv("VERCEL"):
+        live_timing.start()
     yield
     await live_timing.stop()
 

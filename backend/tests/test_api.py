@@ -1,4 +1,5 @@
 import os
+import asyncio
 from unittest.mock import MagicMock
 
 os.environ["APP_USE_SAMPLE_DATA"] = "true"
@@ -13,6 +14,7 @@ from datetime import datetime, timezone
 from app.services.openf1 import _featured_meeting, _slug
 from app.services.media_window import media_window
 from app.services.repository import EventRepository
+from app.api import routes
 
 client = TestClient(app)
 
@@ -113,6 +115,43 @@ def test_race_state_exposes_live_connection_contract() -> None:
     assert payload["connection"] == "disabled"
     assert payload["isLive"] is False
     assert "raceControl" in payload
+
+
+def test_live_stream_uses_one_collector_and_stops_it(monkeypatch) -> None:
+    class Collector:
+        started = False
+        stopped = False
+
+        def start(self) -> None:
+            self.started = True
+
+        def snapshot(self, slug: str) -> dict[str, str]:
+            return {"event": slug, "connection": "live"}
+
+        async def stop(self) -> None:
+            self.stopped = True
+
+    class RequestStub:
+        async def is_disconnected(self) -> bool:
+            return False
+
+    collector = Collector()
+    monkeypatch.setattr(routes, "LiveTimingService", lambda _settings: collector)
+
+    async def check() -> None:
+        stream = routes.live_timing_events(
+            "2026-singapore", RequestStub(), Settings(app_use_sample_data=True),
+            max_duration_seconds=30, interval_seconds=0,
+        )
+        assert await anext(stream) == "retry: 1000\n\n"
+        frame = await anext(stream)
+        assert "event: timing" in frame
+        assert '"event": "2026-singapore"' in frame
+        await stream.aclose()
+
+    asyncio.run(check())
+    assert collector.started is True
+    assert collector.stopped is True
 
 
 def test_lap_comparison_requires_two_different_drivers() -> None:

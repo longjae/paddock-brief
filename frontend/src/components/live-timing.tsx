@@ -102,23 +102,27 @@ export function LiveTiming({ event }: { event: EventDetail }) {
 
   useEffect(() => {
     let active = true;
+    let lastStreamMessageAt = 0;
     raceControlSession.current = "";
     setRaceControlHistory([]);
     setRadioTranscripts({});
     setOpenRadioPath("");
     setMobilePanel("timing");
     setSelectedDriverNumber(0);
-    const loadState = () => fetch(`${API_BASE}/events/${event.slug}/race-state`, { cache: "no-store" })
+    const loadState = () => {
+      const requestedAt = Date.now();
+      return fetch(`${API_BASE}/events/${event.slug}/race-state`, { cache: "no-store" })
       .then((response) => { if (!response.ok) throw new Error("live state unavailable"); return response.json() as Promise<LiveTimingSnapshot>; })
-      .then((state) => { if (active) acceptSnapshot(state); })
+      .then((state) => { if (active && lastStreamMessageAt <= requestedAt) acceptSnapshot(state); })
       .catch(() => { if (active) setStreamState("retrying"); });
+    };
     void loadState();
-    const poll = window.setInterval(() => { void loadState(); }, 15_000);
+    const poll = window.setInterval(() => { if (Date.now() - lastStreamMessageAt > 8_000) void loadState(); }, 15_000);
     const stream = new EventSource(`${API_BASE}/events/${event.slug}/live-stream`);
     stream.addEventListener("open", () => active && setStreamState("open"));
     stream.addEventListener("timing", (message) => {
       if (!active) return;
-      try { acceptSnapshot(JSON.parse((message as MessageEvent<string>).data) as LiveTimingSnapshot); setStreamState("open"); }
+      try { acceptSnapshot(JSON.parse((message as MessageEvent<string>).data) as LiveTimingSnapshot); lastStreamMessageAt = Date.now(); setStreamState("open"); }
       catch { setStreamState("retrying"); }
     });
     stream.addEventListener("error", () => active && setStreamState("retrying"));

@@ -1,4 +1,5 @@
 from datetime import datetime
+import time
 
 import httpx
 import asyncio
@@ -12,7 +13,7 @@ from app.schemas import ChampionshipSnapshot, EventDetail, Health
 from app.services.jolpica import JolpicaService, get_jolpica_service
 from app.services.repository import EventRepository, get_repository
 from app.services.openf1 import OpenF1Service, get_openf1_service
-from app.services.live_timing import get_live_timing_service
+from app.services.live_timing import LiveTimingService, get_live_timing_service
 
 router = APIRouter()
 
@@ -173,16 +174,31 @@ async def get_session_laps(
     return result
 
 
-@router.get("/events/{slug}/live-stream")
-async def get_live_stream(slug: str, request: Request) -> StreamingResponse:
-    async def events():
-        while not await request.is_disconnected():
-            payload = get_live_timing_service().snapshot(slug)
+async def live_timing_events(
+    slug: str,
+    request: Request,
+    settings: Settings,
+    *,
+    max_duration_seconds: float = 240,
+    interval_seconds: float = 2,
+):
+    collector = LiveTimingService(settings)
+    collector.start()
+    started = time.monotonic()
+    try:
+        yield "retry: 1000\n\n"
+        while time.monotonic() - started < max_duration_seconds and not await request.is_disconnected():
+            payload = collector.snapshot(slug)
             yield f"event: timing\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
-            await asyncio.sleep(2)
+            await asyncio.sleep(interval_seconds)
+    finally:
+        await collector.stop()
 
+
+@router.get("/events/{slug}/live-stream")
+async def get_live_stream(slug: str, request: Request, settings: Settings = Depends(get_settings)) -> StreamingResponse:
     return StreamingResponse(
-        events(),
+        live_timing_events(slug, request, settings),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
     )
