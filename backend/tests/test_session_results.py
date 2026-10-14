@@ -51,3 +51,22 @@ def test_other_gp_is_not_used_as_result_fallback() -> None:
     result = asyncio.run(service.session_data(EventDetail.model_validate(DEMO_EVENT), "R"))
     assert result is None
     service.sessions.assert_not_called()
+
+
+def test_lap_comparison_keeps_lap_numbers_and_missing_times() -> None:
+    service = OpenF1Service()
+    service.meetings = AsyncMock(return_value=[{"meeting_name": "Singapore Grand Prix", "meeting_key": 91}])
+    service.sessions = AsyncMock(return_value=[{"session_name": "Race", "session_key": 92, "date_start": "2025-10-05T12:00:00+00:00"}])
+
+    async def get(resource: str, **params: object):
+        assert resource == "laps" and params["session_key"] == 92
+        number = params["driver_number"]
+        return [{"driver_number": number, "lap_number": 2, "lap_duration": 95.1 if number == 16 else None, "duration_sector_1": 30.2, "duration_sector_2": None, "duration_sector_3": 31.7, "is_pit_out_lap": number == 16}, {"driver_number": number, "lap_number": 1, "lap_duration": 93.4}]
+
+    service._get = AsyncMock(side_effect=get)
+    result = asyncio.run(service.session_laps(EventDetail.model_validate(DEMO_EVENT), "R", 16, 55))
+    assert result is not None and result["status"] == "published"
+    assert [lap["lap"] for lap in result["drivers"][0]["laps"]] == [1, 2]
+    assert result["drivers"][0]["laps"][1]["pitOut"] is True
+    assert result["drivers"][1]["laps"][1]["duration"] is None
+    assert result["drivers"][0]["laps"][1]["sectors"] == [30.2, None, 31.7]

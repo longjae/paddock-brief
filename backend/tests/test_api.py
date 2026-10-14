@@ -115,6 +115,11 @@ def test_race_state_exposes_live_connection_contract() -> None:
     assert "raceControl" in payload
 
 
+def test_lap_comparison_requires_two_different_drivers() -> None:
+    response = client.get("/api/v1/events/2026-singapore/sessions/R/laps?driver_a=16&driver_b=16")
+    assert response.status_code == 400
+
+
 def test_supabase_rows_are_normalized_to_frontend_contract() -> None:
     event = EventRepository._normalize(
         {

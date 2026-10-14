@@ -59,11 +59,12 @@ class OpenF1Service:
         self._meetings: dict[int, list[dict[str, Any]]] = {}
         self._sessions: dict[int, list[dict[str, Any]]] = {}
         self._session_data_cache: dict[int, tuple[float, dict[str, Any]]] = {}
+        self._lap_cache: dict[tuple[int, int, int], tuple[float, dict[str, Any]]] = {}
         self._lock = asyncio.Lock()
 
     async def _get(self, resource: str, **params: object) -> list[dict[str, Any]]:
         async with httpx.AsyncClient(timeout=12.0) as client:
-            for attempt in range(2):
+            for attempt in range(3):
                 try:
                     response = await client.get(f"{OPENF1_BASE_URL}/{resource}", params=params)
                     response.raise_for_status()
@@ -71,9 +72,9 @@ class OpenF1Service:
                     break
                 except (httpx.TimeoutException, httpx.HTTPStatusError) as error:
                     retryable = isinstance(error, httpx.TimeoutException) or error.response.status_code in {429, 500, 502, 503, 504}
-                    if attempt or not retryable:
+                    if attempt == 2 or not retryable:
                         raise
-                    await asyncio.sleep(0.6)
+                    await asyncio.sleep(0.8 * (attempt + 1))
         return payload if isinstance(payload, list) else []
 
     async def meetings(self, year: int) -> list[dict[str, Any]]:
@@ -130,11 +131,7 @@ class OpenF1Service:
 
     async def session_data(self, event: EventDetail, short_name: str) -> dict[str, Any] | None:
         """Return published results and tyre stints for an exact GP and session."""
-        meetings = await self.meetings(event.season)
-        meeting = next((row for row in meetings if _slug(event.season, row["meeting_name"]) == event.slug), None)
-        if meeting is None:
-            return None
-        session = next((row for row in await self.sessions(meeting["meeting_key"]) if _session_short_name(row["session_name"]) == short_name), None)
+        session = await self._matching_session(event, short_name)
         if session is None:
             return None
         started = _parse_datetime(session["date_start"]) <= datetime.now(timezone.utc)
@@ -202,6 +199,50 @@ class OpenF1Service:
         result = {"status": "published" if payload else "pending", "session": short_name, "drivers": payload, "maxLap": max_lap, "source": "OpenF1"}
         if payload:
             self._session_data_cache[key] = (time.monotonic() + 300, result)
+        return result
+
+    async def _matching_session(self, event: EventDetail, short_name: str) -> dict[str, Any] | None:
+        meetings = await self.meetings(event.season)
+        meeting = next((row for row in meetings if _slug(event.season, row["meeting_name"]) == event.slug), None)
+        if meeting is None:
+            return None
+        return next((row for row in await self.sessions(meeting["meeting_key"]) if _session_short_name(row["session_name"]) == short_name), None)
+
+    async def session_laps(self, event: EventDetail, short_name: str, driver_a: int, driver_b: int) -> dict[str, Any] | None:
+        session = await self._matching_session(event, short_name)
+        if session is None:
+            return None
+        started = _parse_datetime(session["date_start"]) <= datetime.now(timezone.utc)
+        if not started:
+            return {"status": "upcoming", "session": short_name, "drivers": [], "source": "OpenF1"}
+        key = session["session_key"]
+        cache_key = (key, min(driver_a, driver_b), max(driver_a, driver_b))
+        cached = self._lap_cache.get(cache_key)
+        if cached and cached[0] > time.monotonic():
+            return cached[1]
+        first, second = await asyncio.gather(
+            self._get("laps", session_key=key, driver_number=driver_a),
+            self._get("laps", session_key=key, driver_number=driver_b),
+        )
+        def normalized(rows: list[dict[str, Any]], number: int) -> dict[str, Any]:
+            laps = []
+            for row in rows:
+                lap_number = row.get("lap_number")
+                if not isinstance(lap_number, int) or row.get("driver_number") != number:
+                    continue
+                duration = row.get("lap_duration")
+                laps.append({
+                    "lap": lap_number,
+                    "duration": duration if isinstance(duration, (int, float)) else None,
+                    "sectors": [row.get(f"duration_sector_{index}") if isinstance(row.get(f"duration_sector_{index}"), (int, float)) else None for index in (1, 2, 3)],
+                    "pitOut": row.get("is_pit_out_lap") is True,
+                })
+            laps.sort(key=lambda row: row["lap"])
+            return {"number": number, "laps": laps}
+
+        result = {"status": "published" if first or second else "pending", "session": short_name, "drivers": [normalized(first, driver_a), normalized(second, driver_b)], "source": "OpenF1"}
+        if first or second:
+            self._lap_cache[cache_key] = (time.monotonic() + 300, result)
         return result
 
     async def _event_detail(self, meeting: dict[str, Any], round_number: int) -> EventDetail:

@@ -1,15 +1,18 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { EventDetail, LiveTimingSnapshot } from "@/lib/types";
+import { tyreImagePath } from "@/lib/tyre-image";
 import { TrackReplay } from "@/components/track-replay";
 import { OfficialCircuitMap } from "@/components/official-circuit-map";
+import { LapComparison } from "@/components/lap-comparison";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 const STATUS_LABEL: Record<LiveTimingSnapshot["connection"], string> = { disabled: "수집기 대기", offline: "오프라인", connecting: "연결 중", reconnecting: "재연결 중", live: "실시간" };
 const TRACK_LABEL: Record<string, string> = { "1": "트랙 정상", "2": "황기", "4": "세이프티카", "5": "적기", "6": "가상 세이프티카", "7": "VSC 종료 중" };
 type RadioTranscript = { status: "loading" | "ready" | "unavailable" | "failed"; text?: string | null; translation?: string | null; audioUrl?: string };
-type MobilePanel = "timing" | "track" | "control" | "radio";
+type MobilePanel = "timing" | "track" | "control" | "radio" | "laps";
 
 function value(item: Record<string, string | number | boolean | null>, key: string): string {
   return item[key] === null || item[key] === undefined ? "" : String(item[key]);
@@ -153,7 +156,7 @@ export function LiveTiming({ event }: { event: EventDetail }) {
       })}
     </div>
     <nav className="live-mobile-nav" aria-label="라이브 화면 선택">
-      {([ ["timing", "순위"], ["track", "트랙맵"], ["control", "레이스 컨트롤"], ["radio", "팀 라디오"] ] as const).map(([panel, label]) => <button key={panel} type="button" aria-current={mobilePanel === panel ? "page" : undefined} onClick={() => setMobilePanel(panel)}>{label}</button>)}
+      {([ ["timing", "순위"], ["track", "트랙맵"], ["control", "레이스 컨트롤"], ["radio", "팀 라디오"], ["laps", "랩 비교"] ] as const).map(([panel, label]) => <button key={panel} type="button" aria-current={mobilePanel === panel ? "page" : undefined} onClick={() => setMobilePanel(panel)}>{label}</button>)}
     </nav>
     <div className="live-grid">
       <section className={`panel live-tower ${mobilePanel === "timing" ? "mobile-active" : ""}`}><header><div><p className="eyebrow">TIMING TOWER</p><h3>실시간 순위</h3></div><span>{snapshot?.drivers.length ?? 0} DRIVERS</span></header>
@@ -177,7 +180,7 @@ export function LiveTiming({ event }: { event: EventDetail }) {
             </div>)}
           </div>
           <div className="live-tyre-dashboard" title={(driver.tyreHistory ?? []).map((tyre) => `${tyre.compound} ${tyre.laps}랩`).join(" → ")} aria-label={`${driver.compound} 타이어, ${driver.stint || 0}번째 스틴트, ${driver.tyreAge}랩 사용`}>
-            <span className={`live-tyre-ring ${driver.compound.toLowerCase()}`}><b>{driver.compound.slice(0, 1)}</b></span>
+            <Image className="live-tyre-image" src={tyreImagePath(driver.compound)} alt="" width={38} height={38} />
             <span className="live-tyre-usage"><b>{driver.pitStops !== null && driver.pitStops !== undefined ? `${driver.pitStops} PIT` : `ST${driver.stint || "—"}`}</b><small>{driver.tyreAge} LAP</small></span>
           </div>
         </article>)}
@@ -204,6 +207,7 @@ export function LiveTiming({ event }: { event: EventDetail }) {
         })}</div></section>
     </div>
     </>}
+    <div className={`live-lap-slot ${mobilePanel === "laps" ? "mobile-active" : ""}`}><LapComparison event={event} /></div>
     <p className="live-disclaimer">F1의 비공식 라이브 타이밍 피드를 사용합니다. 중계 화면보다 지연되거나 일부 항목이 제공되지 않을 수 있습니다. 최종 결과는 경기 종료 후 공식 자료로 보정합니다.</p>
   </section>;
 }

@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import type { EventDetail } from "@/lib/types";
+import { tyreImagePath } from "@/lib/tyre-image";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 const COMPOUNDS = ["SOFT", "MEDIUM", "HARD", "INTERMEDIATE", "WET"] as const;
@@ -10,10 +11,6 @@ type Compound = typeof COMPOUNDS[number];
 type Stint = { number: number | null; compound: string; startLap: number | null; endLap: number | null; tyreAgeAtStart: number };
 type ResultDriver = { number: number; position: number | null; code: string; name: string; team: string; colour: string; laps: number; time: string | null; gap: number | string | null; status: string; stints: Stint[] };
 type SessionData = { status: "upcoming" | "pending" | "published"; session: string; drivers: ResultDriver[]; maxLap: number; source: string };
-
-function tyreImage(compound: string) {
-  return `/assets/tyres/${COMPOUNDS.includes(compound as Compound) ? compound.toLowerCase() : "unknown"}.svg`;
-}
 
 function gapLabel(value: number | string | null, status: string, position: number | null) {
   if (status !== "CLASSIFIED") return status;
@@ -67,8 +64,8 @@ export function WeekendSessionResults({ event }: { event: EventDetail }) {
       <div className="session-result-head"><span>POS</span><span>DRIVER</span><span>TIME / GAP</span><span>LAPS</span></div>
       <div className="session-result-list">{visibleData.drivers.map((driver) => <div className="session-result-row" key={`${driver.code}-${driver.number}`} style={{ "--driver-colour": driver.colour } as React.CSSProperties}><b>{driver.position ?? "—"}</b><span><strong>{driver.code}</strong><small>{driver.team}</small></span><span>{driver.time || gapLabel(driver.gap, driver.status, driver.position)}</span><span>{driver.laps || "—"}</span></div>)}</div>
       <div className="stint-section"><div className="section-heading compact"><div><p className="eyebrow">TYRE HISTORY</p><h3>스틴트</h3></div><span className="lap">{hasStints ? `${maxLap} LAPS` : "기록 대기"}</span></div>
-        <div className="stint-compounds" role="group" aria-label="타이어 종류 선택">{COMPOUNDS.map((compound) => <button key={compound} type="button" className={selectedCompound === compound ? "active" : ""} aria-pressed={selectedCompound === compound} onClick={() => setSelectedCompound(selectedCompound === compound ? null : compound)}><Image src={tyreImage(compound)} alt="" width={35} height={35} /><span>{compound}</span></button>)}</div>
-        {selectedCompound && <div className="selected-tyre"><Image src={tyreImage(selectedCompound)} alt={`${selectedCompound} 타이어 이미지`} width={82} height={82} /><div><b>{selectedCompound} 타이어</b><small>{visibleData.drivers.reduce((count, driver) => count + driver.stints.filter((stint) => stint.compound === selectedCompound).length, 0)}개 스틴트 · 선택한 타이어 구간을 강조합니다.</small></div><button type="button" onClick={() => setSelectedCompound(null)}>전체 보기</button></div>}
+        <div className="stint-compounds" role="group" aria-label="타이어 종류 선택">{COMPOUNDS.map((compound) => <button key={compound} type="button" className={selectedCompound === compound ? "active" : ""} aria-pressed={selectedCompound === compound} onClick={() => setSelectedCompound(selectedCompound === compound ? null : compound)}><Image src={tyreImagePath(compound)} alt="" width={35} height={35} /><span>{compound}</span></button>)}</div>
+        {selectedCompound && <div className="selected-tyre"><Image src={tyreImagePath(selectedCompound)} alt={`${selectedCompound} 타이어 이미지`} width={82} height={82} /><div><b>{selectedCompound} 타이어</b><small>{visibleData.drivers.reduce((count, driver) => count + driver.stints.filter((stint) => stint.compound === selectedCompound).length, 0)}개 스틴트 · 선택한 타이어 구간을 강조합니다.</small></div><button type="button" onClick={() => setSelectedCompound(null)}>전체 보기</button></div>}
         {!hasStints && <p className="empty-state">이 세션에서 공개된 스틴트 기록이 없습니다.</p>}
         {hasStints && <div className="stint-list">{visibleData.drivers.filter((driver) => driver.stints.length > 0).map((driver) => <div className="stint-row" key={driver.number}><b>{driver.code}</b><div className="stint-track" aria-label={`${driver.code} 타이어 스틴트`}>{driver.stints.map((stint, index) => {
           const start = Math.max(1, stint.startLap ?? 1);
