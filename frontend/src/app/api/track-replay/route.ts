@@ -9,9 +9,17 @@ const OPENF1 = "https://api.openf1.org/v1";
 const FRAME_SECONDS = 2;
 
 async function openF1<T>(path: string, params: URLSearchParams): Promise<T> {
-  const response = await fetch(`${OPENF1}/${path}?${params}`, { next: { revalidate: 3600 }, signal: AbortSignal.timeout(20000) });
-  if (!response.ok) throw new Error(`OpenF1 ${response.status}`);
-  return response.json() as Promise<T>;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const response = await fetch(`${OPENF1}/${path}?${params}`, {
+      next: { revalidate: 3600 },
+      signal: AbortSignal.timeout(20000),
+    }).catch(() => null);
+    if (response?.ok) return response.json() as Promise<T>;
+    if (response && response.status < 500 && response.status !== 429) throw new Error(`OpenF1 ${response.status}`);
+    if (attempt === 2) throw new Error(`OpenF1 ${response?.status ?? "connection failed"}`);
+    await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+  }
+  throw new Error("OpenF1 unavailable");
 }
 
 export async function GET(request: Request) {
