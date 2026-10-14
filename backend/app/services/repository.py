@@ -34,6 +34,37 @@ class EventRepository:
             raise HTTPException(status_code=404, detail="Event not found")
         return self._normalize(response.data)
 
+    def latest_news(self, limit: int = 40) -> list[dict[str, object]]:
+        if self.client is None:
+            return []
+        rows = (
+            self.client.table("general_news")
+            .select("id,category,title,source_url,korean_summary,korean_detail,author,tags,team_codes,driver_codes,published_at,sources(name)")
+            .eq("review_status", "approved")
+            .order("published_at", desc=True)
+            .limit(limit)
+            .execute()
+            .data
+        )
+        return [
+            {
+                "id": str(row["id"]),
+                "outlet": (row.get("sources") or {}).get("name", "Media"),
+                "category": row["category"],
+                "title": row["title"],
+                "url": row["source_url"],
+                "summary": row["korean_summary"],
+                "detailedSummary": row["korean_detail"],
+                "author": row.get("author"),
+                "tags": row.get("tags") or [],
+                "teamCodes": row.get("team_codes") or [],
+                "driverCodes": row.get("driver_codes") or [],
+                "publishedAt": str(row["published_at"]),
+                "isPaywalled": False,
+            }
+            for row in rows
+        ]
+
     def list_events(self) -> list[dict[str, object]]:
         if self.client is None:
             return [{key: DEMO_EVENT[key] for key in ("slug", "season", "round", "name", "country", "circuit", "dateLabel", "mediaOpenAt", "mediaOpenLabel")}]

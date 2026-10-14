@@ -2,7 +2,7 @@ name: Collect F1 weekend content
 
 on:
   schedule:
-    # 매시 정각 확인하되, 수집기는 각 레이스 현지시간 목요일부터 월요일까지 실제 작업한다.
+    # 최신 뉴스는 연중 수집하고 경기별 자료는 각 레이스 현지시간 목요일부터 월요일까지 수집한다.
     - cron: "0 * * * *"
   workflow_dispatch:
     inputs:
@@ -53,6 +53,8 @@ jobs:
           cache-dependency-glob: backend/uv.lock
       - name: Install collector dependencies
         run: uv sync --frozen --group collector
+      - name: Collect latest news throughout the season
+        run: uv run --group collector python scripts/collect_general_news.py
       - name: Collect, classify, summarize, and save
         run: >-
           uv run --group collector python scripts/collect_weekend_content.py

@@ -7,7 +7,7 @@ import json
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
 from app.core.config import Settings, get_settings
@@ -34,6 +34,11 @@ async def persisted_live_state(slug: str) -> dict[str, Any] | None:
 def health(settings: Settings = Depends(get_settings)) -> Health:
     mode = "supabase" if settings.supabase_configured and not settings.app_use_sample_data else "jolpica"
     return Health(mode=mode, supabaseConfigured=settings.supabase_configured)
+
+
+@router.get("/news/latest")
+def latest_news(limit: int = Query(40, ge=1, le=100), repository: EventRepository = Depends(get_repository)) -> list[dict[str, object]]:
+    return repository.latest_news(limit)
 
 
 @router.get("/standings/{season}/{round_number}", response_model=ChampionshipSnapshot)

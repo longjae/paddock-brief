@@ -28,7 +28,7 @@ type ModalContent = {
   publishedAt?: string | null;
 };
 
-export type MainSection = "weekend" | "interviews" | "championship" | "live" | "glossary";
+export type MainSection = "weekend" | "news" | "interviews" | "championship" | "live" | "glossary";
 export type InterviewSection = "press" | "teams" | "drivers" | "videos" | "media";
 type WeekendDay = "목요일" | "금요일" | "토요일" | "일요일";
 
@@ -61,6 +61,7 @@ function articleMentionsEvent(article: NewsArticle, event: EventDetail): boolean
 }
 
 function pageHref(section: MainSection, eventSlug?: string, interviewView: InterviewSection = "press"): string {
+  if (section === "news") return "/news";
   const prefix = eventSlug ? `/races/${eventSlug}` : "";
   if (section === "interviews") return `${prefix}/interviews/${interviewView}`;
   return `${prefix}/${section}`;
@@ -389,6 +390,9 @@ export function Dashboard({
   const [activeTeam, setActiveTeam] = useState<string | null>(null);
   const [paddockView, setPaddockView] = useState<"team" | "driver">("team");
   const [activeOutlet, setActiveOutlet] = useState("all");
+  const [latestNews, setLatestNews] = useState<NewsArticle[]>([]);
+  const [newsLoading, setNewsLoading] = useState(true);
+  const [newsError, setNewsError] = useState(false);
   const [activeDriver, setActiveDriver] = useState<string | null>(null);
   const [selectedContent, setSelectedContent] = useState<ModalContent | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
@@ -463,6 +467,22 @@ export function Dashboard({
       controller.abort();
     };
   }, [initialEventSlug]);
+
+  useEffect(() => {
+    if (activeSection !== "news") return;
+    const controller = new AbortController();
+    fetch(`${API_BASE}/news/latest`, { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error("News unavailable");
+        return response.json() as Promise<NewsArticle[]>;
+      })
+      .then((articles) => { setLatestNews(articles); setNewsError(false); })
+      .catch((error: unknown) => {
+        if (!(error instanceof DOMException && error.name === "AbortError")) setNewsError(true);
+      })
+      .finally(() => setNewsLoading(false));
+    return () => controller.abort();
+  }, [activeSection]);
 
   const selectedVideo = event.videos.find((video) => video.id === activeVideo) ?? event.videos[0];
   const mediaWindowOpen = !event.mediaOpenAt || (currentTime > 0 && currentTime >= new Date(event.mediaOpenAt).getTime());
@@ -624,21 +644,22 @@ export function Dashboard({
         </Link>
         <nav aria-label="주요 메뉴">
           <Link className={activeSection === "weekend" ? "active" : ""} href={pageHref("weekend", event.slug)}>Weekend</Link>
+          <Link className={activeSection === "news" ? "active" : ""} href="/news">News</Link>
           <Link className={activeSection === "interviews" ? "active" : ""} href={pageHref("interviews", event.slug, interviewSection)}>Interviews</Link>
           <Link className={activeSection === "championship" ? "active" : ""} href={pageHref("championship", event.slug)}>Championship</Link>
           <Link className={activeSection === "live" ? "active" : ""} href={pageHref("live", event.slug)}>Live</Link>
           <Link className={activeSection === "glossary" ? "active" : ""} href={pageHref("glossary", event.slug)}>F1 용어집</Link>
         </nav>
-        <label className="event-select-wrap"><span>{event.season} 시즌</span><select className="event-select" aria-label="그랑프리 선택" value={event.slug} onChange={(change) => router.push(pageHref(activeSection, change.target.value, interviewSection))}>
+        {activeSection !== "news" && <label className="event-select-wrap"><span>{event.season} 시즌</span><select className="event-select" aria-label="그랑프리 선택" value={event.slug} onChange={(change) => router.push(pageHref(activeSection, change.target.value, interviewSection))}>
           {events.length === 0 && <option value={event.slug}>{event.name}</option>}
           {events.map((calendarEvent) => <option key={calendarEvent.slug} value={calendarEvent.slug}>R{calendarEvent.round} · {calendarEvent.name}</option>)}
-        </select></label>
+        </select></label>}
         <div className={`data-pill ${source}`}>{source === "api" ? "API connected" : "Sample mode"}</div>
       </header>
 
       <div className={`app-shell ${activeSection === "live" ? "live-shell" : ""}`}>
         <div className="dashboard-page">
-      <section className={`hero ${activeSection === "weekend" ? "hero-weekend" : ""}`} id="top">
+      {activeSection !== "news" && <section className={`hero ${activeSection === "weekend" ? "hero-weekend" : ""}`} id="top">
         <div>
           <p className="eyebrow">ROUND {String(event.round).padStart(2, "0")} · {event.season}</p>
           <h1>{event.name}</h1>
@@ -648,7 +669,15 @@ export function Dashboard({
           {officialMap?.imageUrl || event.trackMapUrl ? <Image className={officialMap ? "official-hero-map" : undefined} src={officialMap?.imageUrl || event.trackMapUrl || ""} alt={`${event.circuit} 공식 트랙 레이아웃`} width={470} height={220} sizes="(max-width: 980px) 90vw, 470px" /> : <div className="track-orbit"><span /><span /><span /></div>}
           <div className="track-meta"><b>{event.circuit.toUpperCase()}</b><small>{event.country.toUpperCase()} · TRACK MAP</small>{officialMap && <a href={officialMap.sourceUrl} target="_blank" rel="noreferrer">F1 공식 맵 ↗</a>}</div>
         </div>
-      </section>
+      </section>}
+
+      {activeSection === "news" && <section className="section-page latest-news-page" id="news">
+        <div className="page-heading"><div><p className="eyebrow">LATEST F1 NEWS</p><h1>F1 최신 뉴스</h1><p>그랑프리 일정과 관계없이 확인한 기사를 모았습니다. 발행 시각은 원문 기준입니다.</p></div><span>{latestNews.length} ARTICLES</span></div>
+        {newsLoading ? <p className="empty-state">최신 기사를 불러오는 중입니다…</p> : newsError ? <p className="empty-state">기사를 불러오지 못했습니다. 잠시 후 다시 확인해 주세요.</p> : latestNews.length === 0 ? <p className="empty-state">최근 수집한 기사가 없습니다. 다음 수집 후 이곳에 표시됩니다.</p> : <>
+          <div className="outlet-tabs" role="group" aria-label="매체 필터"><button className={activeOutlet === "all" ? "active" : ""} onClick={() => setActiveOutlet("all")} type="button">전체</button>{[...new Set(latestNews.map((article) => article.outlet))].map((outlet) => <button className={activeOutlet === outlet ? "active" : ""} key={outlet} onClick={() => setActiveOutlet(outlet)} type="button">{outlet}</button>)}</div>
+          <div className="news-grid">{newestFirst(latestNews.filter((article) => activeOutlet === "all" || article.outlet === activeOutlet)).map((article) => <button className="news-card" key={article.id} onClick={() => setSelectedContent(newsModalContent(article, "var(--f1-red)"))} type="button"><div className="news-meta"><b>{article.outlet}</b><span>{newsCategoryLabel(article.category)}</span></div><h3>{article.title}</h3><p>{shortBrief(article.summary)}</p><footer><small>{publicationLabel(article.publishedAt, currentTime)}</small><b>상세 요약 보기 ↗</b></footer></button>)}</div>
+        </>}
+      </section>}
 
       {activeSection === "weekend" && (
         <section className="section-page weekend-page" id="weekend">
