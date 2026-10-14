@@ -11,7 +11,8 @@ import { LapComparison } from "@/components/lap-comparison";
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 const STATUS_LABEL: Record<LiveTimingSnapshot["connection"], string> = { disabled: "수집기 대기", offline: "오프라인", connecting: "연결 중", reconnecting: "재연결 중", live: "실시간" };
 const TRACK_LABEL: Record<string, string> = { "1": "트랙 정상", "2": "황기", "4": "세이프티카", "5": "적기", "6": "가상 세이프티카", "7": "VSC 종료 중" };
-type RadioTranscript = { status: "loading" | "ready" | "unavailable" | "failed"; text?: string | null; translation?: string | null; audioUrl?: string };
+type RadioSegment = { start: number; end: number; speaker: string | null; text: string };
+type RadioTranscript = { status: "loading" | "ready" | "unavailable" | "failed"; text?: string | null; translation?: string | null; audioUrl?: string; segments?: RadioSegment[] };
 type MobilePanel = "timing" | "track" | "control" | "radio" | "laps";
 
 function value(item: Record<string, string | number | boolean | null>, key: string): string {
@@ -73,8 +74,8 @@ export function LiveTiming({ event }: { event: EventDetail }) {
     if (!path || radioTranscripts[path]) return;
     setRadioTranscripts((current) => ({ ...current, [path]: { status: "loading", audioUrl } }));
     fetch(`${API_BASE}/team-radio/transcript?path=${encodeURIComponent(path)}&sessionPath=${encodeURIComponent(sessionPath)}`)
-      .then((response) => { if (!response.ok) throw new Error("transcript unavailable"); return response.json() as Promise<{ audioUrl: string; transcript?: string | null; translation?: string | null }>; })
-      .then((result) => setRadioTranscripts((current) => ({ ...current, [path]: { status: result.transcript ? "ready" : "unavailable", text: result.transcript, translation: result.translation, audioUrl: result.audioUrl } })))
+      .then((response) => { if (!response.ok) throw new Error("transcript unavailable"); return response.json() as Promise<{ audioUrl: string; transcript?: string | null; translation?: string | null; status?: "ready" | "unavailable"; segments?: RadioSegment[] }>; })
+      .then((result) => setRadioTranscripts((current) => ({ ...current, [path]: { status: result.status || (result.transcript ? "ready" : "unavailable"), text: result.transcript, translation: result.translation, audioUrl: result.audioUrl, segments: result.segments } })))
       .catch(() => setRadioTranscripts((current) => ({ ...current, [path]: { status: "failed" } })));
   };
 
@@ -84,12 +85,12 @@ export function LiveTiming({ event }: { event: EventDetail }) {
     let active = true;
     const loadSaved = () => {
       fetch(`${API_BASE}/team-radio/transcripts?sessionPath=${encodeURIComponent(radioSessionPath)}`)
-        .then((response) => { if (!response.ok) throw new Error("saved captions unavailable"); return response.json() as Promise<Array<{ path: string; transcript: string; translation: string | null }>>; })
+        .then((response) => { if (!response.ok) throw new Error("saved captions unavailable"); return response.json() as Promise<Array<{ path: string; transcript: string; translation: string | null; status?: "ready" | "unavailable"; segments?: RadioSegment[] }>>; })
         .then((rows) => {
           if (!active) return;
           setRadioTranscripts((current) => {
             const next = { ...current };
-            for (const row of rows) next[row.path] = { status: "ready", text: row.transcript, translation: row.translation };
+            for (const row of rows) next[row.path] = { status: row.status || "ready", text: row.transcript, translation: row.translation, segments: row.segments };
             return next;
           });
         })
@@ -204,9 +205,9 @@ export function LiveTiming({ event }: { event: EventDetail }) {
           const utc = value(radio, "Utc");
           const published = utc ? new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Seoul" }).format(new Date(utc)) : "시간 정보 없음";
           return <article className="radio-card" key={`${utc}-${index}`} style={{ "--driver-colour": driver?.colour || "#e10600" } as React.CSSProperties}>
-            <button className="radio-card-toggle" type="button" aria-expanded={isOpen} onClick={() => { setOpenRadioPath(isOpen ? "" : path); if (!isOpen && !transcript) loadRadioTranscript(path, sessionPath, audioUrl); }}><span className="radio-driver"><span>#{racingNumber || "—"}</span><span className="radio-driver-name"><small>{driver?.team || "FORMULA 1"}</small><b>{driver?.name || driver?.code || `CAR ${racingNumber || "—"}`}</b></span><time>{published}</time></span><span className="radio-expand-label">{isOpen ? "접기" : transcript?.status === "ready" ? "자막 있음 · 듣기" : "듣기 · 자막 확인"}</span></button>
+            <button className="radio-card-toggle" type="button" aria-expanded={isOpen} onClick={() => { setOpenRadioPath(isOpen ? "" : path); if (!isOpen && !transcript) loadRadioTranscript(path, sessionPath, audioUrl); }}><span className="radio-driver"><span>#{racingNumber || "—"}</span><span className="radio-driver-name"><small>{driver?.team || "FORMULA 1"}</small><b>{driver?.name || driver?.code || `CAR ${racingNumber || "—"}`}</b></span><time>{published}</time></span><span className="radio-expand-label">{isOpen ? "접기" : transcript?.status === "ready" ? "자막 있음 · 듣기" : transcript?.status === "unavailable" ? "자막 없음 · 듣기" : "듣기 · 자막 확인"}</span></button>
             {isOpen && <><div className="radio-player">{(transcript?.audioUrl || audioUrl) && <audio controls preload="metadata" src={transcript?.audioUrl || audioUrl}>팀 라디오 오디오</audio>}</div>
-            <div className="radio-transcript" role="status">{!transcript && <p>자막 제공 여부를 확인하는 중입니다…</p>}{transcript?.status === "loading" && <p>자막을 확인하는 중입니다…</p>}{transcript?.status === "unavailable" && <p>이 라디오의 자막은 아직 제공되지 않습니다. 음성으로 확인해 주세요.</p>}{transcript?.status === "failed" && <p>자막을 불러오지 못했습니다. 음성으로 확인해 주세요.</p>}{transcript?.status === "ready" && <>{radioTranslationEnabled && transcript.translation && <p className="translated"><i />{transcript.translation}</p>}<p className={radioTranslationEnabled && transcript.translation ? "original" : ""}><i />{transcript.text}</p><small>확인 가능한 발화만 담은 자동 자막입니다. 정확한 내용은 음성으로 확인하세요.</small></>}</div></>}
+            <div className="radio-transcript" role="status">{!transcript && <p>자막 제공 여부를 확인하는 중입니다…</p>}{transcript?.status === "loading" && <p>자막을 확인하는 중입니다…</p>}{transcript?.status === "unavailable" && <p>이 라디오의 자막은 아직 제공되지 않습니다. 음성으로 확인해 주세요.</p>}{transcript?.status === "failed" && <p>자막을 불러오지 못했습니다. 음성으로 확인해 주세요.</p>}{transcript?.status === "ready" && <>{radioTranslationEnabled && transcript.translation && <p className="translated"><i />{transcript.translation}</p>}{transcript.segments?.length ? <div className="radio-speaker-list">{transcript.segments.map((segment, segmentIndex) => <p key={`${segment.start}-${segmentIndex}`} className="radio-speaker-line"><b>{segment.speaker ? `화자 ${segment.speaker}` : "화자 미확인"}</b><time>{Math.floor(segment.start / 60)}:{String(Math.floor(segment.start % 60)).padStart(2, "0")}</time><span>{segment.text}</span></p>)}</div> : <p className={radioTranslationEnabled && transcript.translation ? "original" : ""}><i />{transcript.text}</p>}<small>화자 A/B는 음성별 구분입니다. 드라이버·엔지니어의 신원은 확인되지 않았습니다. 정확한 내용은 음성으로 확인하세요.</small></>}</div></>}
           </article>;
         })}</div></section>
     </div>

@@ -4,6 +4,7 @@ import time
 import httpx
 import asyncio
 import json
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -205,7 +206,7 @@ async def get_live_stream(slug: str, request: Request, settings: Settings = Depe
 
 
 @router.get("/team-radio/transcript")
-async def get_team_radio_transcript(path: str, sessionPath: str) -> dict[str, str | None]:
+async def get_team_radio_transcript(path: str, sessionPath: str) -> dict[str, Any]:
     try:
         return await get_live_timing_service().transcribe_team_radio(path, sessionPath)
     except ValueError as error:
@@ -215,7 +216,7 @@ async def get_team_radio_transcript(path: str, sessionPath: str) -> dict[str, st
 
 
 @router.get("/team-radio/transcripts")
-async def get_team_radio_transcripts(sessionPath: str) -> list[dict[str, str | None]]:
+async def get_team_radio_transcripts(sessionPath: str) -> list[dict[str, Any]]:
     try:
         return await get_live_timing_service().saved_team_radio_transcripts(sessionPath)
     except ValueError as error:

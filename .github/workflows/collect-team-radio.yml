@@ -19,6 +19,11 @@ on:
         required: false
         default: 30
         type: number
+      backfill_speakers:
+        description: "기존 영어 자막의 화자 구간 다시 분석"
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: collect-team-radio
@@ -41,6 +46,7 @@ jobs:
       MEETING_FILTER: ${{ inputs.meeting }}
       DRY_RUN: ${{ inputs.dry_run }}
       MAX_CLIPS: ${{ inputs.max_clips }}
+      BACKFILL_SPEAKERS: ${{ inputs.backfill_speakers }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -51,8 +57,7 @@ jobs:
         run: uv sync --frozen
       - name: Transcribe and save published clips
         run: |
-          if [ "$DRY_RUN" = "true" ]; then
-            uv run python scripts/collect_team_radio.py --meeting "$MEETING_FILTER" --max-clips "${MAX_CLIPS:-30}" --dry-run
-          else
-            uv run python scripts/collect_team_radio.py --meeting "$MEETING_FILTER" --max-clips "${MAX_CLIPS:-30}"
-          fi
+          args=(--meeting "$MEETING_FILTER" --max-clips "${MAX_CLIPS:-30}")
+          if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
+          if [ "$BACKFILL_SPEAKERS" = "true" ]; then args+=(--backfill-speakers); fi
+          uv run python scripts/collect_team_radio.py "${args[@]}"

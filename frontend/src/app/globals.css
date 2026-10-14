@@ -752,3 +752,10 @@ footer { display: flex; justify-content: space-between; padding: 20px 2px 34px; 
   .track-replay-control-top { flex-wrap: wrap; }
   .track-replay-control-top > span { flex-basis: 100%; margin-left: 0; }
 }
+
+.radio-speaker-list { display: grid; gap: 7px; }
+.radio-transcript .radio-speaker-line { display: grid; grid-template-columns: auto auto 1fr; align-items: baseline; gap: 7px; padding: 9px 10px; }
+.radio-speaker-line b { color: #f1f3f6; font-size: 10px; white-space: nowrap; }
+.radio-speaker-line time { color: #9ea6b5; font: 10px var(--font-mono); }
+.radio-speaker-line span { min-width: 0; }
+@media (max-width: 600px) { .radio-transcript .radio-speaker-line { grid-template-columns: auto 1fr; } .radio-speaker-line span { grid-column: 1 / -1; } }

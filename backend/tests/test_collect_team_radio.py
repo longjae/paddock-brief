@@ -1,6 +1,19 @@
 from datetime import UTC, datetime
 
 from scripts.collect_team_radio import active_session_paths, openf1_radio_captures, radio_captures
+from app.services.live_timing import radio_speaker_segments
+
+
+def test_diarized_segments_keep_timing_without_guessing_identity() -> None:
+    payload = {"segments": [
+        {"start": 0.2, "end": 1.4, "speaker": "A", "text": "Box now."},
+        {"start": 1.5, "end": 2.1, "speaker": "driver", "text": "Copy."},
+        {"start": -1, "end": 2, "speaker": "B", "text": "bad"},
+    ]}
+    assert radio_speaker_segments(payload) == [
+        {"start": 0.2, "end": 1.4, "speaker": "A", "text": "Box now."},
+        {"start": 1.5, "end": 2.1, "speaker": None, "text": "Copy."},
+    ]
 
 
 def test_radio_archive_parses_list_and_delta_captures() -> None:

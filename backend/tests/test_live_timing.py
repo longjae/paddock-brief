@@ -214,7 +214,8 @@ def test_new_radio_transcript_is_saved_for_later_requests(monkeypatch) -> None:
         if request.url.path.endswith(".mp3"):
             return httpx.Response(200, content=b"audio")
         if request.url.path.endswith("/audio/transcriptions"):
-            return httpx.Response(200, json={"text": "Box, box"})
+            assert request.content.count(b'gpt-4o-transcribe-diarize') == 1
+            return httpx.Response(200, json={"text": "Box, box", "segments": [{"start": 0, "end": 1.3, "speaker": "A", "text": "Box, box"}]})
         return httpx.Response(200, json={"output_text": "피트로 들어오세요"})
 
     real_client = httpx.AsyncClient
@@ -223,7 +224,7 @@ def test_new_radio_transcript_is_saved_for_later_requests(monkeypatch) -> None:
     service.radio_store = StoredRadio()
     result = asyncio.run(service.transcribe_team_radio("TeamRadio/TEST.mp3", "2026/test/Race/"))
     assert result["transcript"] == "Box, box"
-    assert saved == [{"session_path": "2026/test/Race/", "path": "TeamRadio/TEST.mp3", "transcript": "Box, box", "translation": "피트로 들어오세요"}]
+    assert saved == [{"session_path": "2026/test/Race/", "path": "TeamRadio/TEST.mp3", "transcript": "Box, box", "translation": "피트로 들어오세요", "status": "ready", "segments": [{"start": 0.0, "end": 1.3, "speaker": "A", "text": "Box, box"}]}]
 
 
 def test_team_radio_uses_proxy_after_archive_blocks_collector(monkeypatch) -> None:

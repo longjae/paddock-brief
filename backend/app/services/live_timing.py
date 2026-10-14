@@ -47,6 +47,22 @@ TEAM_RADIO_PATH_RE = re.compile(r"^TeamRadio/[A-Za-z0-9_-]+\.mp3$")
 SESSION_PATH_RE = re.compile(r"^[A-Za-z0-9_/-]+/$")
 
 
+def radio_speaker_segments(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    segments = []
+    for item in payload.get("segments", []):
+        if not isinstance(item, dict) or not str(item.get("text") or "").strip():
+            continue
+        try:
+            start, end = float(item["start"]), float(item["end"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not (math.isfinite(start) and math.isfinite(end) and 0 <= start <= end):
+            continue
+        speaker = str(item.get("speaker") or "").strip()
+        segments.append({"start": start, "end": end, "speaker": speaker if re.fullmatch(r"[A-Z]", speaker) else None, "text": str(item["text"]).strip()})
+    return segments
+
+
 def team_radio_audio_url(path: str, session_path: str) -> str:
     if not TEAM_RADIO_PATH_RE.fullmatch(path) or not SESSION_PATH_RE.fullmatch(session_path) or ".." in session_path:
         raise ValueError("Invalid team radio path")
@@ -213,23 +229,24 @@ class LiveTimingService:
         if path:
             self._session_path = path
 
-    async def transcribe_team_radio(self, path: str, session_path: str) -> dict[str, str | None]:
+    async def transcribe_team_radio(self, path: str, session_path: str, force: bool = False) -> dict[str, Any]:
         audio_url = team_radio_audio_url(path, session_path)
-        if self.radio_store is not None:
+        if self.radio_store is not None and not force:
             try:
                 stored = await asyncio.to_thread(
                     lambda: self.radio_store.table("team_radio_transcripts")
-                    .select("transcript,translation")
+                    .select("transcript,translation,status,segments")
                     .eq("session_path", session_path)
                     .eq("path", path)
                     .limit(1)
                     .execute()
                 )
                 if stored.data:
-                    return {"audioUrl": audio_url, "transcript": stored.data[0]["transcript"], "translation": stored.data[0].get("translation"), "language": "en"}
+                    row = stored.data[0]
+                    return {"audioUrl": audio_url, "transcript": row["transcript"] or None, "translation": row.get("translation"), "language": "en" if row["transcript"] else None, "status": row.get("status", "ready"), "segments": row.get("segments") or []}
             except Exception:
                 LOGGER.warning("Stored team radio transcript unavailable for %s", path, exc_info=True)
-        if path in self.radio_transcripts:
+        if path in self.radio_transcripts and not force:
             return {
                 "audioUrl": audio_url,
                 "transcript": self.radio_transcripts[path],
@@ -252,11 +269,13 @@ class LiveTimingService:
             transcript_response = await client.post(
                 "https://api.openai.com/v1/audio/transcriptions",
                 headers={"Authorization": f"Bearer {self.settings.openai_api_key}"},
-                data={"model": "gpt-4o-mini-transcribe", "response_format": "json"},
+                data={"model": "gpt-4o-transcribe-diarize", "response_format": "diarized_json"},
                 files={"file": (path.rsplit("/", 1)[-1], audio_response.content, "audio/mpeg")},
             )
             transcript_response.raise_for_status()
-        transcript = str(transcript_response.json().get("text") or "").strip()
+        payload = transcript_response.json()
+        transcript = str(payload.get("text") or "").strip()
+        segments = radio_speaker_segments(payload)
         translation: str | None = None
         if transcript:
             self.radio_transcripts[path] = transcript
@@ -289,30 +308,34 @@ class LiveTimingService:
                     self.radio_translations[path] = translation
             except (httpx.HTTPError, ValueError):
                 LOGGER.warning("Team radio translation failed for %s", path, exc_info=True)
-            if self.radio_store is not None and self.settings.supabase_secret_key:
-                await asyncio.to_thread(
-                    lambda: self.radio_store.table("team_radio_transcripts").upsert({
-                        "session_path": session_path,
-                        "path": path,
-                        "transcript": transcript,
-                        "translation": translation,
-                    }, on_conflict="session_path,path").execute()
-                )
+        if self.radio_store is not None and self.settings.supabase_secret_key:
+            await asyncio.to_thread(
+                lambda: self.radio_store.table("team_radio_transcripts").upsert({
+                    "session_path": session_path,
+                    "path": path,
+                    "transcript": transcript,
+                    "translation": translation,
+                    "status": "ready" if transcript else "unavailable",
+                    "segments": segments,
+                }, on_conflict="session_path,path").execute()
+            )
         return {
             "audioUrl": audio_url,
             "transcript": transcript or None,
             "translation": translation,
             "language": "en" if transcript else None,
+            "status": "ready" if transcript else "unavailable",
+            "segments": segments,
         }
 
-    async def saved_team_radio_transcripts(self, session_path: str) -> list[dict[str, str | None]]:
+    async def saved_team_radio_transcripts(self, session_path: str) -> list[dict[str, Any]]:
         if not SESSION_PATH_RE.fullmatch(session_path) or ".." in session_path:
             raise ValueError("Invalid team radio session path")
         if self.radio_store is None:
             return []
         result = await asyncio.to_thread(
             lambda: self.radio_store.table("team_radio_transcripts")
-            .select("path,transcript,translation")
+            .select("path,transcript,translation,status,segments")
             .eq("session_path", session_path)
             .execute()
         )

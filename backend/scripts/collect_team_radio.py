@@ -82,7 +82,7 @@ def openf1_radio_captures(sessions: list[dict[str, Any]], rows: list[dict[str, A
     return sorted(unique.values(), key=lambda pair: pair[1]["utc"], reverse=True)
 
 
-async def collect(meeting_filter: str, max_clips: int, dry_run: bool) -> int:
+async def collect(meeting_filter: str, max_clips: int, dry_run: bool, backfill_speakers: bool = False) -> int:
     settings = get_settings()
     if not dry_run and (not settings.openai_api_key or not settings.supabase_url or not settings.supabase_secret_key):
         raise RuntimeError("OPENAI_API_KEY and Supabase secret credentials are required")
@@ -124,13 +124,15 @@ async def collect(meeting_filter: str, max_clips: int, dry_run: bool) -> int:
     candidates.sort(key=lambda pair: pair[1]["utc"], reverse=True)
     saved = 0
     attempted = 0
-    existing_by_session: dict[str, set[str]] = {}
+    existing_by_session: dict[str, dict[str, dict[str, Any]]] = {}
     for session_path, capture in candidates:
         if session_path not in existing_by_session:
             existing = await service.saved_team_radio_transcripts(session_path) if service.radio_store else []
-            existing_by_session[session_path] = {str(item["path"]) for item in existing}
+            existing_by_session[session_path] = {str(item["path"]): item for item in existing}
         path = capture["path"]
-        if path in existing_by_session[session_path]:
+        prior = existing_by_session[session_path].get(path)
+        needs_backfill = bool(backfill_speakers and prior and prior.get("status", "ready") == "ready" and not prior.get("segments"))
+        if prior and not needs_backfill:
             continue
         if dry_run:
             print(f"Would transcribe {session_path}{path}")
@@ -138,12 +140,10 @@ async def collect(meeting_filter: str, max_clips: int, dry_run: bool) -> int:
         else:
             attempted += 1
             try:
-                result = await service.transcribe_team_radio(path, session_path)
-                if not result.get("transcript"):
-                    continue
-                existing_by_session[session_path].add(path)
+                result = await service.transcribe_team_radio(path, session_path, force=needs_backfill)
+                existing_by_session[session_path][path] = result
                 saved += 1
-                print(f"Saved {session_path}{path}")
+                print(f"Saved {session_path}{path}: {result.get('status', 'ready')}")
             except (httpx.HTTPError, ValueError) as error:
                 LOGGER.warning("Skipped %s: %s", path, type(error).__name__)
         if saved >= max_clips:
@@ -159,5 +159,6 @@ if __name__ == "__main__":
     parser.add_argument("--meeting", default="")
     parser.add_argument("--max-clips", type=int, default=30)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--backfill-speakers", action="store_true")
     args = parser.parse_args()
-    asyncio.run(collect(args.meeting, args.max_clips, args.dry_run))
+    asyncio.run(collect(args.meeting, args.max_clips, args.dry_run, args.backfill_speakers))
