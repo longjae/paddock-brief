@@ -616,6 +616,16 @@ footer { display: flex; justify-content: space-between; padding: 20px 2px 34px; 
 .track-replay-telemetry :is(b, span) { color: var(--ink); font: 800 11px var(--font-mono); }.track-replay-telemetry small { color: var(--muted); font-size: 8px; }
 .track-replay-note { margin: auto 14px; color: var(--muted); font-size: 12px; line-height: 1.55; }
 .track-replay-source { margin: 0; padding: 4px 14px 8px; color: var(--muted); font-size: 10px; }.track-replay-source a { color: var(--ink); }
+.track-replay-controls { display: grid; gap: 5px; padding: 7px 12px 3px; border-bottom: 1px solid var(--line); }
+.track-replay-control-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.track-replay-control-top button, .track-replay-error button { flex: 0 0 auto; min-height: 30px; padding: 4px 9px; color: #fff; background: #b3131b; border: 1px solid #dc2931; border-radius: 5px; font-size: 11px; font-weight: 800; cursor: pointer; }
+.track-replay-control-top button:disabled { opacity: .5; cursor: default; }
+.track-replay-control-top label { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; white-space: nowrap; }
+.track-replay-control-top select { max-width: 82px; padding: 4px; color: var(--ink); background: #151a20; border: 1px solid var(--line); border-radius: 4px; }
+.track-replay-control-top > span { overflow: hidden; margin-left: auto; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.track-replay-controls > input { width: 100%; margin: 0; accent-color: var(--red); }
+.track-replay-error { display: flex; align-items: center; gap: 8px; padding: 10px 14px; }.track-replay-error .track-replay-note { margin: 0; }
+.track-replay-telemetry select { max-width: 110px; }
 .live-shell .live-message-list article { padding: 7px 2px; }
 .live-tyre-cell { display: flex; align-items: center; gap: 5px; min-width: 0; }
 .live-tyre-cell > small { color: var(--muted); font: 800 8px var(--font-mono); white-space: nowrap; }

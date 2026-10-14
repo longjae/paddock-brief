@@ -1,15 +1,15 @@
 type Session = { session_key: number; session_name: string; date_start: string; date_end?: string };
+type Lap = { lap_number: number; date_start: string; lap_duration: number | null };
+type Result = { driver_number: number; position: number | null };
 type Location = { driver_number: number; date: string; x: number; y: number };
-type CarData = { driver_number: number; date: string; speed: number; rpm: number; n_gear: number; throttle: number; brake: number; drs: number | null };
+type CarData = { date: string; speed: number; rpm: number; n_gear: number; throttle: number; brake: number; drs: number | null };
 type Driver = { driver_number: number; name_acronym: string; team_colour: string; team_name: string };
 
 const OPENF1 = "https://api.openf1.org/v1";
+const FRAME_SECONDS = 2;
 
 async function openF1<T>(path: string, params: URLSearchParams): Promise<T> {
-  const response = await fetch(`${OPENF1}/${path}?${params}`, {
-    next: { revalidate: 3600 },
-    signal: AbortSignal.timeout(12000),
-  });
+  const response = await fetch(`${OPENF1}/${path}?${params}`, { next: { revalidate: 3600 }, signal: AbortSignal.timeout(20000) });
   if (!response.ok) throw new Error(`OpenF1 ${response.status}`);
   return response.json() as Promise<T>;
 }
@@ -19,11 +19,12 @@ export async function GET(request: Request) {
   const season = Number(query.get("season"));
   const country = query.get("country")?.trim() ?? "";
   const raceStart = query.get("raceStart") ?? "";
-  const minute = Number(query.get("minute") ?? "10");
+  const lapNumber = Number(query.get("lap") ?? "1");
   const selectedDriver = Number(query.get("driver") ?? "0");
   if (!Number.isInteger(season) || season < 2023 || season > new Date().getUTCFullYear() ||
       !/^[a-zA-Z .'-]{2,50}$/.test(country) || !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(raceStart) ||
-      !Number.isInteger(minute) || minute < 5 || minute > 180 || !Number.isInteger(selectedDriver) || selectedDriver < 0 || selectedDriver > 99) {
+      !Number.isInteger(lapNumber) || lapNumber < 1 || lapNumber > 100 ||
+      !Number.isInteger(selectedDriver) || selectedDriver < 0 || selectedDriver > 99) {
     return Response.json({ error: "Invalid replay request" }, { status: 400 });
   }
 
@@ -37,43 +38,65 @@ export async function GET(request: Request) {
     }
     if (!session) return Response.json({ available: false, reason: "종료된 레이스 위치 기록이 없습니다." });
 
-    const start = new Date(session.date_start).getTime();
-    const traceStart = new Date(start + 5 * 60_000);
-    const sampleStart = new Date(start + minute * 60_000);
-    if (sampleStart.getTime() > new Date(session.date_end!).getTime()) {
-      return Response.json({ available: false, reason: "선택한 시각이 레이스 종료 이후입니다." });
+    const key = String(session.session_key);
+    const [results, drivers] = await Promise.all([
+      openF1<Result[]>("session_result", new URLSearchParams({ session_key: key })),
+      openF1<Driver[]>("drivers", new URLSearchParams({ session_key: key })),
+    ]);
+    const sortedResults = [...results].sort((a, b) => (a.position ?? 999) - (b.position ?? 999));
+    const leaderNumber = sortedResults.find((result) => result.position === 1)?.driver_number;
+    if (!leaderNumber) return Response.json({ available: false, reason: "레이스 최종 순위가 아직 없습니다." });
+    const laps = (await openF1<Lap[]>("laps", new URLSearchParams({ session_key: key, driver_number: String(leaderNumber) })))
+      .filter((lap) => Number.isInteger(lap.lap_number) && lap.date_start).sort((a, b) => a.lap_number - b.lap_number);
+    const selectedLap = laps.find((lap) => lap.lap_number === lapNumber);
+    if (!selectedLap) return Response.json({ available: false, reason: "선택한 랩의 위치 기록이 없습니다.", maxLap: laps.at(-1)?.lap_number ?? 0 });
+    const nextLap = laps.find((lap) => lap.lap_number === lapNumber + 1);
+    const start = new Date(selectedLap.date_start).getTime();
+    const naturalEnd = nextLap ? new Date(nextLap.date_start).getTime() : start + (selectedLap.lap_duration ?? 120) * 1000;
+    const end = Math.min(start + 5 * 60_000, naturalEnd);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+      return Response.json({ available: false, reason: "선택한 랩의 시각 정보가 없습니다." });
     }
-    const windowParams = (from: Date, seconds: number) => new URLSearchParams({
-      session_key: String(session.session_key),
-      "date>": from.toISOString(),
-      "date<": new Date(from.getTime() + seconds * 1000).toISOString(),
-    });
-    const [positionRows, drivers] = await Promise.all([
-      openF1<Location[]>("location", windowParams(sampleStart, 3)),
-      openF1<Driver[]>("drivers", new URLSearchParams({ session_key: String(session.session_key) })),
+    const windowParams = new URLSearchParams({ session_key: key, "date>": new Date(start).toISOString(), "date<": new Date(end).toISOString() });
+    const focusNumber = sortedResults.some((result) => result.driver_number === selectedDriver) ? selectedDriver : leaderNumber;
+    const [locationRows, carRows] = await Promise.all([
+      openF1<Location[]>("location", windowParams),
+      openF1<CarData[]>("car_data", new URLSearchParams({ ...Object.fromEntries(windowParams), driver_number: String(focusNumber) })),
     ]);
-    const byDriver = new Map<number, Location>();
-    for (const row of positionRows) if (Number.isFinite(row.x) && Number.isFinite(row.y)) byDriver.set(row.driver_number, row);
-    if (byDriver.size === 0) return Response.json({ available: false, reason: "해당 시각의 위치 기록이 부족합니다." });
-    const traceDriver = byDriver.keys().next().value as number;
-    const focusNumber = byDriver.has(selectedDriver) ? selectedDriver : byDriver.keys().next().value as number;
-    const [traceRows, carRows] = await Promise.all([
-      openF1<Location[]>("location", new URLSearchParams({ ...Object.fromEntries(windowParams(traceStart, 120)), driver_number: String(traceDriver) })),
-      openF1<CarData[]>("car_data", new URLSearchParams({ ...Object.fromEntries(windowParams(sampleStart, 2)), driver_number: String(focusNumber) })),
-    ]);
-    const trace = traceRows.filter((row) => Number.isFinite(row.x) && Number.isFinite(row.y)).filter((_, index) => index % 4 === 0).map(({ x, y }) => ({ x, y }));
-    if (trace.length < 20) return Response.json({ available: false, reason: "트랙 윤곽 기록이 부족합니다." });
-    const locationTime = new Date(byDriver.get(focusNumber)!.date).getTime();
-    const car = carRows.filter((row) => row.driver_number === focusNumber)
-      .sort((a, b) => Math.abs(new Date(a.date).getTime() - locationTime) - Math.abs(new Date(b.date).getTime() - locationTime))[0] ?? null;
+    const orderedLocations = locationRows.filter((row) => Number.isFinite(row.x) && Number.isFinite(row.y) && Number.isFinite(new Date(row.date).getTime()))
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    if (!orderedLocations.length) return Response.json({ available: false, reason: "선택한 랩의 위치 기록이 부족합니다." });
     const driverByNumber = new Map(drivers.map((driver) => [driver.driver_number, driver]));
-    return Response.json({ available: true, sessionKey: session.session_key, sessionTime: sampleStart.toISOString(),
-      trace, focusNumber, car: car ? { speed: car.speed, rpm: car.rpm, gear: car.n_gear, throttle: car.throttle, brake: car.brake, drs: car.drs } : null,
-      positions: [...byDriver.values()].map(({ driver_number, x, y }) => ({ number: driver_number, x, y,
-        code: driverByNumber.get(driver_number)?.name_acronym || `#${driver_number}`,
-        team: driverByNumber.get(driver_number)?.team_name || "",
-        colour: `#${driverByNumber.get(driver_number)?.team_colour || "e10600"}`,
-      })) });
+    const rankByNumber = new Map(sortedResults.map((result, index) => [result.driver_number, result.position ?? index + 1]));
+    const trace = orderedLocations.filter((row) => row.driver_number === leaderNumber).filter((_, index) => index % 5 === 0)
+      .map(({ x, y }) => ({ x, y }));
+    const latest = new Map<number, Location>();
+    const frames = [];
+    let locationIndex = 0;
+    let carIndex = 0;
+    let latestCar: CarData | null = null;
+    const orderedCars = carRows.filter((row) => Number.isFinite(new Date(row.date).getTime()))
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    for (let time = start; time < end; time += FRAME_SECONDS * 1000) {
+      const sampleEnd = Math.min(time + FRAME_SECONDS * 1000, end);
+      while (locationIndex < orderedLocations.length && new Date(orderedLocations[locationIndex].date).getTime() < sampleEnd) {
+        const row = orderedLocations[locationIndex++];
+        latest.set(row.driver_number, row);
+      }
+      while (carIndex < orderedCars.length && new Date(orderedCars[carIndex].date).getTime() < sampleEnd) latestCar = orderedCars[carIndex++];
+      const positions = [...latest.values()].sort((a, b) => (rankByNumber.get(a.driver_number) ?? 999) - (rankByNumber.get(b.driver_number) ?? 999))
+        .map((row) => ({ number: row.driver_number, x: row.x, y: row.y }));
+      if (positions.length) frames.push({ time: new Date(time).toISOString(), positions,
+        car: latestCar ? { speed: latestCar.speed, rpm: latestCar.rpm, gear: latestCar.n_gear, throttle: latestCar.throttle, brake: latestCar.brake, drs: latestCar.drs } : null });
+    }
+    const standings = sortedResults.map((result, index) => {
+      const driver = driverByNumber.get(result.driver_number);
+      return { number: result.driver_number, position: result.position ?? index + 1,
+        code: driver?.name_acronym || `#${result.driver_number}`, team: driver?.team_name || "",
+        colour: `#${driver?.team_colour || "e10600"}` };
+    });
+    return Response.json({ available: true, sessionKey: session.session_key, lap: lapNumber, maxLap: laps.at(-1)?.lap_number ?? lapNumber,
+      leaderNumber, focusNumber, frameSeconds: FRAME_SECONDS, frames, trace, standings });
   } catch (error) {
     console.error("OpenF1 track replay failed", error);
     return Response.json({ available: false, reason: "위치 기록을 불러오지 못했습니다." }, { status: 502 });
