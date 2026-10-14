@@ -78,7 +78,8 @@ def openf1_radio_captures(sessions: list[dict[str, Any]], rows: list[dict[str, A
         except ValueError:
             continue
         captures.append((session_path, {"path": path, "utc": str(row.get("date") or "")}))
-    return sorted(captures, key=lambda pair: pair[1]["utc"], reverse=True)
+    unique = {(session_path, capture["path"]): (session_path, capture) for session_path, capture in captures}
+    return sorted(unique.values(), key=lambda pair: pair[1]["utc"], reverse=True)
 
 
 async def collect(meeting_filter: str, max_clips: int, dry_run: bool) -> int:
@@ -122,6 +123,7 @@ async def collect(meeting_filter: str, max_clips: int, dry_run: bool) -> int:
             paths = list({session_path for session_path, _ in candidates})
     candidates.sort(key=lambda pair: pair[1]["utc"], reverse=True)
     saved = 0
+    attempted = 0
     existing_by_session: dict[str, set[str]] = {}
     for session_path, capture in candidates:
         if session_path not in existing_by_session:
@@ -134,6 +136,7 @@ async def collect(meeting_filter: str, max_clips: int, dry_run: bool) -> int:
             print(f"Would transcribe {session_path}{path}")
             saved += 1
         else:
+            attempted += 1
             try:
                 result = await service.transcribe_team_radio(path, session_path)
                 if not result.get("transcript"):
@@ -146,6 +149,8 @@ async def collect(meeting_filter: str, max_clips: int, dry_run: bool) -> int:
         if saved >= max_clips:
             break
     print(f"Sessions: {len(paths)}; published clips: {len(candidates)}; processed: {saved}")
+    if attempted and not saved:
+        raise RuntimeError("No published radio clips could be transcribed or saved")
     return saved
 
 

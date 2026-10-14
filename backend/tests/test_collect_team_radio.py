@@ -26,6 +26,7 @@ def test_openf1_fallback_keeps_only_recent_official_recordings() -> None:
     ]
     rows = [
         {"session_key": 1, "date": "2026-10-11T12:01:00+00:00", "recording_url": "https://livetiming.formula1.com/static/2026/Singapore/Race/TeamRadio/VER.mp3"},
+        {"session_key": 1, "date": "2026-10-11T12:01:00+00:00", "recording_url": "https://livetiming.formula1.com/static/2026/Singapore/Race/TeamRadio/VER.mp3"},
         {"session_key": 2, "date": "2026-01-01T12:01:00+00:00", "recording_url": "https://livetiming.formula1.com/static/2026/Old/Race/TeamRadio/OLD.mp3"},
         {"session_key": 1, "date": "2026-10-11T12:02:00+00:00", "recording_url": "https://example.com/TeamRadio/OTHER.mp3"},
     ]
