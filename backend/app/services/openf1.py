@@ -1,5 +1,6 @@
 import asyncio
 import re
+import time
 from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Any
@@ -57,13 +58,22 @@ class OpenF1Service:
     def __init__(self) -> None:
         self._meetings: dict[int, list[dict[str, Any]]] = {}
         self._sessions: dict[int, list[dict[str, Any]]] = {}
+        self._session_data_cache: dict[int, tuple[float, dict[str, Any]]] = {}
         self._lock = asyncio.Lock()
 
     async def _get(self, resource: str, **params: object) -> list[dict[str, Any]]:
-        async with httpx.AsyncClient(timeout=8.0) as client:
-            response = await client.get(f"{OPENF1_BASE_URL}/{resource}", params=params)
-            response.raise_for_status()
-            payload = response.json()
+        async with httpx.AsyncClient(timeout=12.0) as client:
+            for attempt in range(2):
+                try:
+                    response = await client.get(f"{OPENF1_BASE_URL}/{resource}", params=params)
+                    response.raise_for_status()
+                    payload = response.json()
+                    break
+                except (httpx.TimeoutException, httpx.HTTPStatusError) as error:
+                    retryable = isinstance(error, httpx.TimeoutException) or error.response.status_code in {429, 500, 502, 503, 504}
+                    if attempt or not retryable:
+                        raise
+                    await asyncio.sleep(0.6)
         return payload if isinstance(payload, list) else []
 
     async def meetings(self, year: int) -> list[dict[str, Any]]:
@@ -117,6 +127,82 @@ class OpenF1Service:
             if _slug(year, meeting["meeting_name"]) == slug:
                 return await self._event_detail(meeting, index)
         return None
+
+    async def session_data(self, event: EventDetail, short_name: str) -> dict[str, Any] | None:
+        """Return published results and tyre stints for an exact GP and session."""
+        meetings = await self.meetings(event.season)
+        meeting = next((row for row in meetings if _slug(event.season, row["meeting_name"]) == event.slug), None)
+        if meeting is None:
+            return None
+        session = next((row for row in await self.sessions(meeting["meeting_key"]) if _session_short_name(row["session_name"]) == short_name), None)
+        if session is None:
+            return None
+        started = _parse_datetime(session["date_start"]) <= datetime.now(timezone.utc)
+        if not started:
+            return {"status": "upcoming", "session": short_name, "drivers": [], "maxLap": 0, "source": "OpenF1"}
+
+        key = session["session_key"]
+        cached = self._session_data_cache.get(key)
+        if cached and cached[0] > time.monotonic():
+            return cached[1]
+        results, stints, drivers = await asyncio.gather(
+            self._get("session_result", session_key=key),
+            self._get("stints", session_key=key),
+            self._get("drivers", session_key=key),
+        )
+        by_number = {row.get("driver_number"): row for row in drivers}
+        by_stint: dict[int, list[dict[str, Any]]] = {}
+        for row in stints:
+            number = row.get("driver_number")
+            if isinstance(number, int):
+                by_stint.setdefault(number, []).append(row)
+
+        def time_label(value: Any) -> str | None:
+            if isinstance(value, list):
+                value = next((item for item in reversed(value) if isinstance(item, (int, float))), None)
+            if not isinstance(value, (int, float)):
+                return None
+            if value >= 3600:
+                hours, remainder = divmod(float(value), 3600)
+                minutes, seconds = divmod(remainder, 60)
+                return f"{int(hours)}:{int(minutes):02d}:{seconds:06.3f}"
+            minutes, seconds = divmod(float(value), 60)
+            return f"{int(minutes)}:{seconds:06.3f}" if value >= 60 else f"{seconds:.3f}"
+
+        payload = []
+        for result in results:
+            number = result.get("driver_number")
+            detail = by_number.get(number, {})
+            if not isinstance(number, int) or not detail:
+                continue
+            raw_position = result.get("position")
+            position = int(raw_position) if str(raw_position).isdigit() else None
+            tyre_stints = sorted(by_stint.get(number, []), key=lambda item: (item.get("lap_start") or 0, item.get("stint_number") or 0))
+            payload.append({
+                "number": number,
+                "position": position,
+                "code": detail.get("name_acronym") or str(number),
+                "name": detail.get("full_name") or detail.get("broadcast_name") or str(number),
+                "team": detail.get("team_name") or "—",
+                "colour": f"#{str(detail.get('team_colour') or '888888').lstrip('#')}",
+                "laps": result.get("number_of_laps") or 0,
+                "time": time_label(result.get("duration")),
+                "gap": result.get("gap_to_leader"),
+                "status": "DSQ" if result.get("dsq") else "DNS" if result.get("dns") else "DNF" if result.get("dnf") else "CLASSIFIED",
+                "stints": [{
+                    "number": stint.get("stint_number"),
+                    "compound": str(stint.get("compound") or "UNKNOWN").upper(),
+                    "startLap": stint.get("lap_start"),
+                    "endLap": stint.get("lap_end"),
+                    "tyreAgeAtStart": stint.get("tyre_age_at_start") or 0,
+                } for stint in tyre_stints],
+            })
+        payload.sort(key=lambda row: (row["position"] is None, row["position"] or 999))
+        max_lap = max((stint.get("lap_end") or 0 for stint in stints), default=0)
+        result = {"status": "published" if payload else "pending", "session": short_name, "drivers": payload, "maxLap": max_lap, "source": "OpenF1"}
+        if payload:
+            self._session_data_cache[key] = (time.monotonic() + 300, result)
+        return result
 
     async def _event_detail(self, meeting: dict[str, Any], round_number: int) -> EventDetail:
         session_rows = await self.sessions(meeting["meeting_key"])

@@ -29,6 +29,7 @@ function mergeRaceControl(
 
 export function LiveTiming({ event }: { event: EventDetail }) {
   const [snapshot, setSnapshot] = useState<LiveTimingSnapshot | null>(null);
+  const [clockTime, setClockTime] = useState(0);
   const [streamState, setStreamState] = useState<"opening" | "open" | "retrying">("opening");
   const [radioTranscripts, setRadioTranscripts] = useState<Record<string, RadioTranscript>>({});
   const [radioTranslationEnabled, setRadioTranslationEnabled] = useState(true);
@@ -37,6 +38,12 @@ export function LiveTiming({ event }: { event: EventDetail }) {
   const [openRadioPath, setOpenRadioPath] = useState("");
   const [raceControlHistory, setRaceControlHistory] = useState<LiveTimingSnapshot["raceControl"]>([]);
   const raceControlSession = useRef("");
+
+  useEffect(() => {
+    setClockTime(Date.now());
+    const interval = window.setInterval(() => setClockTime(Date.now()), 5_000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   const acceptSnapshot = (state: LiveTimingSnapshot) => {
     setSnapshot(state);
@@ -98,10 +105,12 @@ export function LiveTiming({ event }: { event: EventDetail }) {
     setOpenRadioPath("");
     setMobilePanel("timing");
     setSelectedDriverNumber(0);
-    fetch(`${API_BASE}/events/${event.slug}/race-state`, { cache: "no-store" })
+    const loadState = () => fetch(`${API_BASE}/events/${event.slug}/race-state`, { cache: "no-store" })
       .then((response) => { if (!response.ok) throw new Error("live state unavailable"); return response.json() as Promise<LiveTimingSnapshot>; })
-      .then((state) => active && acceptSnapshot(state))
-      .catch(() => active && setStreamState("retrying"));
+      .then((state) => { if (active) acceptSnapshot(state); })
+      .catch(() => { if (active) setStreamState("retrying"); });
+    void loadState();
+    const poll = window.setInterval(() => { void loadState(); }, 15_000);
     const stream = new EventSource(`${API_BASE}/events/${event.slug}/live-stream`);
     stream.addEventListener("open", () => active && setStreamState("open"));
     stream.addEventListener("timing", (message) => {
@@ -110,7 +119,7 @@ export function LiveTiming({ event }: { event: EventDetail }) {
       catch { setStreamState("retrying"); }
     });
     stream.addEventListener("error", () => active && setStreamState("retrying"));
-    return () => { active = false; stream.close(); };
+    return () => { active = false; window.clearInterval(poll); stream.close(); };
   }, [event.slug]);
 
   const raceSession = event.sessions.find((session) => session.shortName === "R");
@@ -119,7 +128,7 @@ export function LiveTiming({ event }: { event: EventDetail }) {
   const sessionEnded = raceEnded || snapshot?.session.remaining === "00:00:00";
   const updatedLabel = useMemo(() => !snapshot?.updatedAt ? "아직 수신된 라이브 신호가 없습니다" : `${new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Asia/Seoul" }).format(new Date(snapshot.updatedAt))} KST ${sessionEnded ? "피드 확인" : "갱신"}`, [snapshot?.updatedAt, sessionEnded]);
   const connection = snapshot?.connection ?? (streamState === "retrying" ? "reconnecting" : "connecting");
-  const feedAgeSeconds = snapshot?.updatedAt ? Math.max(0, Math.floor((Date.now() - new Date(snapshot.updatedAt).getTime()) / 1000)) : null;
+  const feedAgeSeconds = snapshot?.updatedAt && clockTime ? Math.max(0, Math.floor((clockTime - new Date(snapshot.updatedAt).getTime()) / 1000)) : null;
   const feedStale = !sessionEnded && snapshot?.isLive && feedAgeSeconds !== null && feedAgeSeconds > 30;
   const statusLabel = upcomingRace ? "레이스 예정" : sessionEnded ? "종료 세션 · 마지막 기록" : feedStale ? "데이터 갱신 지연" : connection === "live" && !snapshot?.isLive ? "피드 연결 · 세션 대기" : STATUS_LABEL[connection];
   const weather = snapshot?.weather ?? {};

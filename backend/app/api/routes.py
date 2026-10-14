@@ -129,6 +129,26 @@ async def get_race_state(
     return live
 
 
+@router.get("/events/{slug}/sessions/{short_name}/results")
+async def get_session_results(
+    slug: str,
+    short_name: str,
+    repository: EventRepository = Depends(get_repository),
+    jolpica: JolpicaService = Depends(get_jolpica_service),
+    openf1: OpenF1Service = Depends(get_openf1_service),
+) -> dict[str, object]:
+    event = await get_event(slug, repository, jolpica, openf1)
+    if short_name not in {session.shortName for session in event.sessions}:
+        raise HTTPException(status_code=404, detail="Session not found")
+    try:
+        result = await openf1.session_data(event, short_name)
+    except (httpx.HTTPError, KeyError, ValueError):
+        raise HTTPException(status_code=502, detail="Session results unavailable") from None
+    if result is None:
+        raise HTTPException(status_code=404, detail="OpenF1 meeting not found")
+    return result
+
+
 @router.get("/events/{slug}/live-stream")
 async def get_live_stream(slug: str, request: Request) -> StreamingResponse:
     async def events():

@@ -10,6 +10,7 @@ import { officialTrackMap } from "@/lib/official-track-maps";
 import type { GlossaryCategory } from "@/lib/glossary";
 import type { ChampionshipSnapshot, EventDetail, EventSummary, NewsArticle, TeamContent, Video } from "@/lib/types";
 import { LiveTiming } from "@/components/live-timing";
+import { WeekendSessionResults } from "@/components/weekend-session-results";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 
@@ -393,6 +394,7 @@ export function Dashboard({
   const [championshipLoading, setChampionshipLoading] = useState(true);
   const [glossaryQuery, setGlossaryQuery] = useState("");
   const [showAllReports, setShowAllReports] = useState(false);
+  const [selectedAllocation, setSelectedAllocation] = useState<"hard" | "medium" | "soft">("medium");
   const [glossaryCategory, setGlossaryCategory] = useState<"전체" | GlossaryCategory>("전체");
   const teamStripRef = useRef<HTMLDivElement>(null);
   const paddockSelectionChangedRef = useRef(false);
@@ -459,9 +461,6 @@ export function Dashboard({
   }, [initialEventSlug]);
 
   const selectedVideo = event.videos.find((video) => video.id === activeVideo) ?? event.videos[0];
-  const classifiedDrivers = event.eventDrivers.filter((driver) => driver.resultPosition != null).toSorted((left, right) => (left.resultPosition ?? 99) - (right.resultPosition ?? 99));
-  const raceRows = event.drivers.length > 0 ? event.drivers : classifiedDrivers.map((driver) => ({ position: driver.resultPosition ?? 99, code: driver.code, team: driver.team, colour: driver.colour, gap: driver.resultStatus, compound: null, tyreAge: null }));
-  const raceComplete = classifiedDrivers.length > 0 || (event.drivers.length > 0 && event.sessions.some((session) => session.shortName === "R" && session.status === "done"));
   const mediaWindowOpen = !event.mediaOpenAt || (currentTime > 0 && currentTime >= new Date(event.mediaOpenAt).getTime());
   const teams = useMemo(() => {
     const seen = new Map<string, { code: string; name: string; colour: string; drivers: EventDetail["eventDrivers"] }>();
@@ -685,30 +684,14 @@ export function Dashboard({
             })}
           </div>
           <div className="weekend-data-grid" id="race-centre">
-            <section className="panel timing-card">
-              <div className="section-heading compact"><div><p className="eyebrow">{raceComplete ? "RACE RESULT" : "LIVE PREVIEW"}</p><h2>레이스 센터</h2></div>{raceRows.length > 0 && <span className="lap">{raceComplete ? "FINAL" : "LIVE"}</span>}</div>
-              <div className="timing-list">
-                {raceRows.length === 0 && <p className="empty-state">{currentTime > 0 && event.sessions.some((session) => session.shortName === "R" && sessionTime(session.startsAt) < currentTime) ? "레이스 일정은 지났지만 최종 순위가 아직 수집되지 않았습니다. 공식 레이스 허브에서 결과를 확인해 주세요." : "레이스 세션이 시작되면 순위, 사용 타이어와 타이어 랩 수가 표시됩니다."}</p>}
-                {raceRows.map((driver) => (
-                  <div className="driver-row" key={driver.code}>
-                    <b className="position">{driver.position}</b>
-                    <i style={{ background: driver.colour }} />
-                    <div><b>{driver.code}</b><small>{driver.team}</small></div>
-                    {driver.compound && driver.tyreAge != null ? <Tyre compound={driver.compound} age={driver.tyreAge} /> : <span className="tyre-data-unavailable">타이어 기록 없음</span>}
-                    <span className="gap">{driver.gap}</span>
-                  </div>
-                ))}
-              </div>
-              {raceRows.length > 0 && <p className="status-line"><span /> {raceComplete ? "FINAL CLASSIFICATION" : "RACE DATA"} <em>{event.drivers.length > 0 ? "경기 데이터" : "저장된 결과"}</em></p>}
-            </section>
+            <WeekendSessionResults event={event} />
             <div className="weekend-data-side">
               <section className="panel tyre-card">
                 <div className="section-heading compact"><div><p className="eyebrow">PIRELLI ALLOCATION</p><h2>이번 주말 타이어</h2></div>{event.tyreSourceUrl && <a href={event.tyreSourceUrl} target="_blank" rel="noreferrer">공식 출처 ↗</a>}</div>
                 <div className="allocation">
-                  <div className="compound hard"><span>H</span><b>Hard</b><small>{event.tyreAllocation.hard}</small></div>
-                  <div className="compound medium"><span>M</span><b>Medium</b><small>{event.tyreAllocation.medium}</small></div>
-                  <div className="compound soft"><span>S</span><b>Soft</b><small>{event.tyreAllocation.soft}</small></div>
+                  {(["hard", "medium", "soft"] as const).map((compound) => <button className={`compound ${compound} ${selectedAllocation === compound ? "selected" : ""}`} key={compound} type="button" aria-pressed={selectedAllocation === compound} onClick={() => setSelectedAllocation(compound)}><Image src={`/assets/tyres/${compound}.svg`} alt="" width={50} height={50} /><b>{compound[0].toUpperCase() + compound.slice(1)}</b><small>{event.tyreAllocation[compound]}</small></button>)}
                 </div>
+                <div className="allocation-selected"><Image src={`/assets/tyres/${selectedAllocation}.svg`} alt={`${selectedAllocation} 타이어 이미지`} width={104} height={104} /><div><b>{selectedAllocation.toUpperCase()}</b><span>{event.tyreAllocation[selectedAllocation] === "TBC" ? "이번 GP의 공식 배정 번호를 확인 중입니다." : `${event.tyreAllocation[selectedAllocation]} · 이번 GP 배정 컴파운드`}</span></div></div>
               </section>
               <div className="briefing panel"><p className="eyebrow">RACE BRIEF</p>{event.summary.map((item, index) => <p key={item}><span>0{index + 1}</span>{item}</p>)}</div>
             </div>
