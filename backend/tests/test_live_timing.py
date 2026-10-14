@@ -226,6 +226,30 @@ def test_new_radio_transcript_is_saved_for_later_requests(monkeypatch) -> None:
     assert saved == [{"session_path": "2026/test/Race/", "path": "TeamRadio/TEST.mp3", "transcript": "Box, box", "translation": "피트로 들어오세요"}]
 
 
+def test_team_radio_uses_proxy_after_archive_blocks_collector(monkeypatch) -> None:
+    import app.services.live_timing as live_timing
+
+    requested = []
+
+    def respond(request):
+        requested.append(str(request.url))
+        if request.url.host == "livetiming.formula1.com":
+            return httpx.Response(403)
+        if request.url.host == "paddock-brief-five.vercel.app":
+            return httpx.Response(200, content=b"audio")
+        if request.url.path.endswith("/audio/transcriptions"):
+            return httpx.Response(200, json={"text": "Push now"})
+        return httpx.Response(200, json={"output_text": "지금 밀어붙이세요"})
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(live_timing.httpx, "AsyncClient", lambda **kwargs: real_client(transport=httpx.MockTransport(respond), **kwargs))
+    service = LiveTimingService(Settings(app_use_sample_data=True, openai_api_key="test", team_radio_audio_proxy_url="https://paddock-brief-five.vercel.app/api/team-radio-audio"))
+    result = asyncio.run(service.transcribe_team_radio("TeamRadio/TEST.mp3", "2026/test/Race/"))
+    assert result["transcript"] == "Push now"
+    assert service.radio_proxy_preferred
+    assert any("sessionPath=2026%2Ftest%2FRace%2F" in url for url in requested)
+
+
 def test_mini_sector_colours_follow_timing_segments() -> None:
     service = LiveTimingService(Settings(app_use_sample_data=True))
     service.topics = {

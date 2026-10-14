@@ -72,8 +72,8 @@ export async function GET(request: Request) {
     const [locationRows, carRows, pitRows, controlRows] = await Promise.all([
       openF1<Location[]>("location", windowParams),
       openF1<CarData[]>("car_data", new URLSearchParams({ ...Object.fromEntries(windowParams), driver_number: String(focusNumber) })),
-      openF1<Pit[]>("pit", windowParams),
-      openF1<RaceControl[]>("race_control", windowParams),
+      openF1<Pit[]>("pit", windowParams).catch(() => []),
+      openF1<RaceControl[]>("race_control", windowParams).catch(() => []),
     ]);
     const orderedLocations = locationRows.filter((row) => Number.isFinite(row.x) && Number.isFinite(row.y) && Number.isFinite(new Date(row.date).getTime()))
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());

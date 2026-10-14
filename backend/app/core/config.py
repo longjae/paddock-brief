@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     youtube_api_key: str | None = None
     transcript_api_key: str | None = None
     openai_api_key: str | None = None
+    team_radio_audio_proxy_url: str | None = None
     openai_summary_model: str = "gpt-6-luna"
     live_timing_enabled: bool = False
     live_timing_url: str = "wss://livetiming.formula1.com/signalrcore"

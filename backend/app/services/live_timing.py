@@ -130,6 +130,7 @@ class LiveTimingService:
         self.topics: dict[str, Any] = {}
         self.radio_transcripts: dict[str, str] = {}
         self.radio_translations: dict[str, str] = {}
+        self.radio_proxy_preferred = False
         self.radio_store = create_client(settings.supabase_url, settings.supabase_key) if settings.supabase_configured and not settings.app_use_sample_data else None
         self.race_control_history: dict[str, dict[str, Any]] = {}
         self._session_path: str | None = None
@@ -238,7 +239,15 @@ class LiveTimingService:
         if not self.settings.openai_api_key:
             return {"audioUrl": audio_url, "transcript": None, "language": None}
         async with httpx.AsyncClient(timeout=45, follow_redirects=True) as client:
-            audio_response = await client.get(audio_url, headers={"User-Agent": self.settings.collector_user_agent})
+            proxy_url = self.settings.team_radio_audio_proxy_url
+            proxy_params = {"sessionPath": session_path, "path": path}
+            if self.radio_proxy_preferred and proxy_url:
+                audio_response = await client.get(proxy_url, params=proxy_params)
+            else:
+                audio_response = await client.get(audio_url, headers={"User-Agent": self.settings.collector_user_agent})
+                if audio_response.status_code == 403 and proxy_url:
+                    self.radio_proxy_preferred = True
+                    audio_response = await client.get(proxy_url, params=proxy_params)
             audio_response.raise_for_status()
             transcript_response = await client.post(
                 "https://api.openai.com/v1/audio/transcriptions",

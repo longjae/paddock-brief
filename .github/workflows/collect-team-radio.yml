@@ -36,6 +36,7 @@ jobs:
       SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OPENAI_SUMMARY_MODEL: "gpt-6-luna"
+      TEAM_RADIO_AUDIO_PROXY_URL: "https://paddock-brief-five.vercel.app/api/team-radio-audio"
       APP_USE_SAMPLE_DATA: "false"
       MEETING_FILTER: ${{ inputs.meeting }}
       DRY_RUN: ${{ inputs.dry_run }}
