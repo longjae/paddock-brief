@@ -1,0 +1,51 @@
+name: Collect published team radio captions
+
+on:
+  schedule:
+    - cron: "20 * * * *"
+  workflow_dispatch:
+    inputs:
+      meeting:
+        description: "그랑프리 이름으로 수집 범위 제한 (비우면 최근 세션)"
+        required: false
+        type: string
+      dry_run:
+        description: "자막 생성과 저장 없이 대상만 확인"
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: collect-team-radio
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_SUMMARY_MODEL: "gpt-6-luna"
+      APP_USE_SAMPLE_DATA: "false"
+      MEETING_FILTER: ${{ inputs.meeting }}
+      DRY_RUN: ${{ inputs.dry_run }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Install dependencies
+        run: uv sync --frozen
+      - name: Transcribe and save published clips
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            uv run python scripts/collect_team_radio.py --meeting "$MEETING_FILTER" --dry-run
+          else
+            uv run python scripts/collect_team_radio.py --meeting "$MEETING_FILTER"
+          fi

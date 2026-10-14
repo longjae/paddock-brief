@@ -59,8 +59,8 @@ def radio_captures(stream: str) -> list[dict[str, str]]:
 
 async def collect(meeting_filter: str, max_clips: int, dry_run: bool) -> int:
     settings = get_settings()
-    if not dry_run and (not settings.openai_api_key or not settings.supabase_configured):
-        raise RuntimeError("OPENAI_API_KEY and Supabase credentials are required")
+    if not dry_run and (not settings.openai_api_key or not settings.supabase_url or not settings.supabase_secret_key):
+        raise RuntimeError("OPENAI_API_KEY and Supabase secret credentials are required")
     service = LiveTimingService(settings)
     async with httpx.AsyncClient(timeout=25, follow_redirects=True) as client:
         index_response = await client.get(f"{BASE}/{datetime.now(UTC).year}/Index.json")
@@ -96,14 +96,6 @@ async def collect(meeting_filter: str, max_clips: int, dry_run: bool) -> int:
                 result = await service.transcribe_team_radio(path, session_path)
                 if not result.get("transcript"):
                     continue
-                await asyncio.to_thread(
-                    lambda: service.radio_store.table("team_radio_transcripts").upsert({
-                        "session_path": session_path,
-                        "path": path,
-                        "transcript": result["transcript"],
-                        "translation": result.get("translation"),
-                    }).execute()
-                )
                 existing_by_session[session_path].add(path)
                 saved += 1
                 print(f"Saved {session_path}{path}")
@@ -118,7 +110,7 @@ async def collect(meeting_filter: str, max_clips: int, dry_run: bool) -> int:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--meeting", default="")
-    parser.add_argument("--max-clips", type=int, default=12)
+    parser.add_argument("--max-clips", type=int, default=30)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
     asyncio.run(collect(args.meeting, args.max_clips, args.dry_run))

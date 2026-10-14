@@ -60,8 +60,3 @@ jobs:
           ${{ inputs.dry_run && '--dry-run' || '' }}
           ${{ inputs.pending && '--pending' || '' }}
           ${{ inputs.discovery_only && '--discovery-only' || '' }}
-      - name: Transcribe published team radio
-        if: ${{ always() && !inputs.discovery_only }}
-        run: >-
-          uv run python scripts/collect_team_radio.py
-          ${{ inputs.dry_run && '--dry-run' || '' }}

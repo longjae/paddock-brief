@@ -3,6 +3,7 @@ import asyncio
 import base64
 import json
 import zlib
+import httpx
 
 from app.core.config import Settings
 from app.services.live_timing import LiveTimingService, _deep_merge, team_radio_audio_url
@@ -180,6 +181,49 @@ def test_saved_radio_transcript_is_available_without_runtime_openai_key() -> Non
     result = asyncio.run(service.transcribe_team_radio("TeamRadio/VER_3_20261010_173427.mp3", "2026/2026-10-10_Singapore_Grand_Prix/2026-10-10_Sprint/"))
     assert result["transcript"] == "Box, box"
     assert result["translation"] == "피트로 들어오세요"
+
+
+def test_new_radio_transcript_is_saved_for_later_requests(monkeypatch) -> None:
+    import app.services.live_timing as live_timing
+
+    saved = []
+
+    class StoredRadio:
+        def table(self, name):
+            assert name == "team_radio_transcripts"
+            return self
+
+        def select(self, columns):
+            return self
+
+        def eq(self, column, value):
+            return self
+
+        def limit(self, count):
+            return self
+
+        def upsert(self, value, on_conflict):
+            assert on_conflict == "session_path,path"
+            saved.append(value)
+            return self
+
+        def execute(self):
+            return type("Result", (), {"data": []})()
+
+    def respond(request):
+        if request.url.path.endswith(".mp3"):
+            return httpx.Response(200, content=b"audio")
+        if request.url.path.endswith("/audio/transcriptions"):
+            return httpx.Response(200, json={"text": "Box, box"})
+        return httpx.Response(200, json={"output_text": "피트로 들어오세요"})
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(live_timing.httpx, "AsyncClient", lambda **kwargs: real_client(transport=httpx.MockTransport(respond), **kwargs))
+    service = LiveTimingService(Settings(app_use_sample_data=True, openai_api_key="test", supabase_secret_key="secret"))
+    service.radio_store = StoredRadio()
+    result = asyncio.run(service.transcribe_team_radio("TeamRadio/TEST.mp3", "2026/test/Race/"))
+    assert result["transcript"] == "Box, box"
+    assert saved == [{"session_path": "2026/test/Race/", "path": "TeamRadio/TEST.mp3", "transcript": "Box, box", "translation": "피트로 들어오세요"}]
 
 
 def test_mini_sector_colours_follow_timing_segments() -> None:

@@ -280,6 +280,18 @@ class LiveTimingService:
                     self.radio_translations[path] = translation
             except (httpx.HTTPError, ValueError):
                 LOGGER.warning("Team radio translation failed for %s", path, exc_info=True)
+            if self.radio_store is not None and self.settings.supabase_secret_key:
+                try:
+                    await asyncio.to_thread(
+                        lambda: self.radio_store.table("team_radio_transcripts").upsert({
+                            "session_path": session_path,
+                            "path": path,
+                            "transcript": transcript,
+                            "translation": translation,
+                        }, on_conflict="session_path,path").execute()
+                    )
+                except Exception:
+                    LOGGER.warning("Team radio transcript could not be saved for %s", path, exc_info=True)
         return {
             "audioUrl": audio_url,
             "transcript": transcript or None,
