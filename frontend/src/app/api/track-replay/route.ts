@@ -4,6 +4,8 @@ type Result = { driver_number: number; position: number | null };
 type Location = { driver_number: number; date: string; x: number; y: number };
 type CarData = { date: string; speed: number; rpm: number; n_gear: number; throttle: number; brake: number; drs: number | null };
 type Driver = { driver_number: number; name_acronym: string; team_colour: string; team_name: string };
+type Pit = { date: string; driver_number: number; lap_number: number; stop_duration: number | null };
+type RaceControl = { date: string; category: string; flag: string | null; message: string };
 
 const OPENF1 = "https://api.openf1.org/v1";
 const FRAME_SECONDS = 2;
@@ -67,9 +69,11 @@ export async function GET(request: Request) {
     }
     const windowParams = new URLSearchParams({ session_key: key, "date>": new Date(start).toISOString(), "date<": new Date(end).toISOString() });
     const focusNumber = sortedResults.some((result) => result.driver_number === selectedDriver) ? selectedDriver : leaderNumber;
-    const [locationRows, carRows] = await Promise.all([
+    const [locationRows, carRows, pitRows, controlRows] = await Promise.all([
       openF1<Location[]>("location", windowParams),
       openF1<CarData[]>("car_data", new URLSearchParams({ ...Object.fromEntries(windowParams), driver_number: String(focusNumber) })),
+      openF1<Pit[]>("pit", windowParams),
+      openF1<RaceControl[]>("race_control", windowParams),
     ]);
     const orderedLocations = locationRows.filter((row) => Number.isFinite(row.x) && Number.isFinite(row.y) && Number.isFinite(new Date(row.date).getTime()))
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -103,8 +107,16 @@ export async function GET(request: Request) {
         code: driver?.name_acronym || `#${result.driver_number}`, team: driver?.team_name || "",
         colour: `#${driver?.team_colour || "e10600"}` };
     });
+    const events = [
+      ...pitRows.filter((row) => row.date && row.driver_number).map((row) => ({
+        time: row.date, kind: "pit", label: `PIT · ${driverByNumber.get(row.driver_number)?.name_acronym || `#${row.driver_number}`}${row.stop_duration ? ` · ${row.stop_duration.toFixed(1)}초` : ""}`,
+      })),
+      ...controlRows.filter((row) => row.date && (row.category === "Flag" || row.category === "SafetyCar")).map((row) => ({
+        time: row.date, kind: "control", label: row.flag ? `${row.flag} · ${row.message}` : row.message,
+      })),
+    ].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
     return Response.json({ available: true, sessionKey: session.session_key, lap: lapNumber, maxLap: laps.at(-1)?.lap_number ?? lapNumber,
-      leaderNumber, focusNumber, frameSeconds: FRAME_SECONDS, frames, trace, standings });
+      leaderNumber, focusNumber, frameSeconds: FRAME_SECONDS, frames, trace, standings, events });
   } catch (error) {
     console.error("OpenF1 track replay failed", error);
     return Response.json({ available: false, reason: "위치 기록을 불러오지 못했습니다." }, { status: 502 });

@@ -623,6 +623,9 @@ footer { display: flex; justify-content: space-between; padding: 20px 2px 34px; 
 .track-replay-control-top label { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .track-replay-control-top select { max-width: 82px; padding: 4px; color: var(--ink); background: #151a20; border: 1px solid var(--line); border-radius: 4px; }
 .track-replay-control-top > span { overflow: hidden; margin-left: auto; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.track-replay-events { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.track-replay-events span { overflow: hidden; max-width: 100%; padding: 3px 6px; color: #fff; background: #30435c; border-radius: 4px; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.track-replay-events span.pit { background: #5b3f16; }
 .track-replay-controls > input { width: 100%; margin: 0; accent-color: var(--red); }
 .track-replay-error { display: flex; align-items: center; gap: 8px; padding: 10px 14px; }.track-replay-error .track-replay-note { margin: 0; }
 .track-replay-telemetry select { max-width: 110px; }
@@ -744,4 +747,6 @@ footer { display: flex; justify-content: space-between; padding: 20px 2px 34px; 
   .live-shell .live-tower-list > article { grid-template-columns: 24px minmax(0, 1fr) 105px; }
   .live-shell .live-tyre-image { flex-basis: 38px; }
   .live-shell .live-tyre-usage :is(b, small) { font-size: 11px; }
+  .track-replay-control-top { flex-wrap: wrap; }
+  .track-replay-control-top > span { flex-basis: 100%; margin-left: 0; }
 }

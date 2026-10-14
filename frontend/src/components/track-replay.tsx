@@ -9,14 +9,22 @@ type Point = { x: number; y: number };
 type Car = { speed: number; rpm: number; gear: number; throttle: number; brake: number; drs: number | null };
 type Standing = { number: number; position: number; code: string; team: string; colour: string };
 type Frame = { time: string; positions: (Point & { number: number })[]; car: Car | null };
-type Replay = { available: true; lap: number; maxLap: number; focusNumber: number; frameSeconds: number; standings: Standing[]; trace: Point[]; frames: Frame[] } |
+type ReplayEvent = { time: string; kind: "pit" | "control"; label: string };
+type Replay = { available: true; lap: number; maxLap: number; focusNumber: number; frameSeconds: number; standings: Standing[]; trace: Point[]; frames: Frame[]; events: ReplayEvent[] } |
   { available: false; reason: string; maxLap?: number };
+
+function cacheLap(cache: Map<string, Replay>, key: string, replay: Replay) {
+  cache.delete(key);
+  cache.set(key, replay);
+  while (cache.size > 12) cache.delete(cache.keys().next().value!);
+}
 
 export function TrackReplay({ event, selectedDriverNumber = 0, liveTrack }: { event: EventDetail; selectedDriverNumber?: number; liveTrack?: LiveTimingSnapshot["track"] }) {
   const [lap, setLap] = useState(1);
   const [maxLap, setMaxLap] = useState(1);
   const [frameIndex, setFrameIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState(4);
   const [driverNumber, setDriverNumber] = useState(0);
   const [expanded, setExpanded] = useState(false);
   const [showOfficialMap, setShowOfficialMap] = useState(false);
@@ -34,6 +42,7 @@ export function TrackReplay({ event, selectedDriverNumber = 0, liveTrack }: { ev
     setMaxLap(1);
     setFrameIndex(0);
     setPlaying(false);
+    setPlaybackSpeed(4);
     setDriverNumber(0);
     setExpanded(false);
     setShowOfficialMap(false);
@@ -60,6 +69,7 @@ export function TrackReplay({ event, selectedDriverNumber = 0, liveTrack }: { ev
     const cacheKey = `${event.slug}:${lap}:${driverNumber}`;
     const cached = replayCache.current.get(cacheKey);
     if (cached) {
+      cacheLap(replayCache.current, cacheKey, cached);
       setReplay(cached);
       setMaxLap(cached.maxLap ?? 1);
       setLoading(false);
@@ -69,7 +79,7 @@ export function TrackReplay({ event, selectedDriverNumber = 0, liveTrack }: { ev
     const params = new URLSearchParams({ season: String(event.season), country: event.country, raceStart: race.startsAt, lap: String(lap), driver: String(driverNumber) });
     fetch(`/api/track-replay?${params}`, { signal: controller.signal })
       .then((response) => { if (!response.ok) throw new Error("Replay unavailable"); return response.json() as Promise<Replay>; })
-      .then((data) => { if (!controller.signal.aborted) { replayCache.current.set(cacheKey, data); setReplay(data); setMaxLap(data.maxLap ?? 1); if (!data.available) setPlaying(false); } })
+      .then((data) => { if (!controller.signal.aborted) { cacheLap(replayCache.current, cacheKey, data); setReplay(data); setMaxLap(data.maxLap ?? 1); if (!data.available) setPlaying(false); } })
       .catch(() => { if (!controller.signal.aborted) { setReplay({ available: false, reason: "위치 기록을 불러오지 못했습니다." }); setPlaying(false); } })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
@@ -85,7 +95,7 @@ export function TrackReplay({ event, selectedDriverNumber = 0, liveTrack }: { ev
     const params = new URLSearchParams({ season: String(event.season), country: event.country, raceStart: race.startsAt, lap: String(nextLap), driver: String(driverNumber) });
     fetch(`/api/track-replay?${params}`, { signal: controller.signal })
       .then((response) => { if (!response.ok) throw new Error("Next lap unavailable"); return response.json() as Promise<Replay>; })
-      .then((data) => { if (!controller.signal.aborted && data.available) replayCache.current.set(cacheKey, data); })
+      .then((data) => { if (!controller.signal.aborted && data.available) cacheLap(replayCache.current, cacheKey, data); })
       .catch(() => { /* The next lap will be requested again when playback reaches it. */ });
     return () => controller.abort();
   }, [playing, replayReady, event.slug, event.season, event.country, race?.startsAt, lap, driverNumber]);
@@ -95,11 +105,15 @@ export function TrackReplay({ event, selectedDriverNumber = 0, liveTrack }: { ev
       if (frameIndex < replayReady.frames.length - 1) setFrameIndex(frameIndex + 1);
       else if (lap < replayReady.maxLap) setLap(lap + 1);
       else setPlaying(false);
-    }, 500);
+    }, replayReady.frameSeconds * 1000 / playbackSpeed);
     return () => window.clearTimeout(timer);
-  }, [playing, replayReady, frameIndex, lap]);
+  }, [playing, replayReady, frameIndex, lap, playbackSpeed]);
 
   const frame = replayReady?.frames[Math.min(frameIndex, replayReady.frames.length - 1)] ?? null;
+  const recentEvents = frame ? replayReady?.events?.filter((item) => {
+    const age = new Date(frame.time).getTime() - new Date(item.time).getTime();
+    return age >= 0 && age < 20_000;
+  }).slice(-2) ?? [] : [];
   const standings = replayReady?.standings ?? [];
   const livePositions = liveReady ? liveTrack!.positions.map((position) => {
     const driver = event.eventDrivers.find((item) => String(item.number) === position.number);
@@ -129,7 +143,7 @@ export function TrackReplay({ event, selectedDriverNumber = 0, liveTrack }: { ev
 
   return <section className={`panel track-replay ${expanded ? "expanded" : ""}`} role={expanded ? "dialog" : undefined} aria-modal={expanded || undefined} aria-label={expanded ? "트랙맵 확대" : undefined}><header><div><p className="eyebrow">TRACK MAP</p><h3>{showOfficialMap ? "공식 트랙맵" : liveReady ? "실시간 선수 위치" : "레이스 리플레이"}</h3></div><div className="track-replay-actions"><span>{showOfficialMap ? "F1 · FIA" : liveReady ? "F1 LIVE" : "OpenF1"}</span>{officialTrackMap(event.slug) && <button type="button" onClick={() => setShowOfficialMap((current) => !current)}>{showOfficialMap ? "선수 위치" : "공식 맵"}</button>}{(hasEnded || liveReady) && <button type="button" onClick={() => setExpanded((current) => !current)} aria-label={expanded ? "지도 닫기" : "지도 확대"}>{expanded ? "닫기" : "확대"}</button>}</div></header>
     {showOfficialMap ? <OfficialCircuitMap event={event} /> : !hasEnded && !liveReady ? <p className="track-replay-note">{liveTrack?.sampledAt ? "위치 신호가 지연되고 있습니다. 새 좌표를 기다리는 중입니다." : "이 세션의 선수 위치 신호를 기다리고 있습니다."}</p> : <>
-      {!liveReady && <div className="track-replay-controls"><div className="track-replay-control-top"><button type="button" onClick={() => { if (!playing && replayReady && lap === maxLap && frameIndex === replayReady.frames.length - 1) setFrameIndex(0); setPlaying((value) => !value); }} disabled={!replayReady?.frames.length} aria-label={playing ? "리플레이 일시정지" : "리플레이 재생"}>{playing ? "Ⅱ 일시정지" : "▶ 재생"}</button><label>랩 <select aria-label="리플레이 랩 선택" value={lap} onChange={(change) => { setLap(Number(change.target.value)); setFrameIndex(0); }}>{Array.from({ length: Math.max(lap, maxLap) }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1} / {maxLap}</option>)}</select></label><span>{frame ? `${new Date(frame.time).toLocaleTimeString("ko-KR", { timeZone: "Asia/Seoul" })} KST` : "기록 대기"} · 4배속</span></div><input aria-label="선택한 랩의 재생 위치" type="range" min="0" max={Math.max(0, (replayReady?.frames.length ?? 1) - 1)} value={frameIndex} disabled={!replayReady?.frames.length} onChange={(change) => { setPlaying(false); setFrameIndex(Number(change.target.value)); }} /></div>}
+      {!liveReady && <div className="track-replay-controls"><div className="track-replay-control-top"><button type="button" onClick={() => { if (!playing && replayReady && lap === maxLap && frameIndex === replayReady.frames.length - 1) setFrameIndex(0); setPlaying((value) => !value); }} disabled={!replayReady?.frames.length} aria-label={playing ? "리플레이 일시정지" : "리플레이 재생"}>{playing ? "Ⅱ 일시정지" : "▶ 재생"}</button><label>랩 <select aria-label="리플레이 랩 선택" value={lap} onChange={(change) => { setLap(Number(change.target.value)); setFrameIndex(0); }}>{Array.from({ length: Math.max(lap, maxLap) }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1} / {maxLap}</option>)}</select></label><label>속도 <select aria-label="리플레이 재생 속도" value={playbackSpeed} onChange={(change) => setPlaybackSpeed(Number(change.target.value))}>{[1, 2, 4, 8].map((speed) => <option key={speed} value={speed}>{speed}배</option>)}</select></label><span>{frame ? `${new Date(frame.time).toLocaleTimeString("ko-KR", { timeZone: "Asia/Seoul" })} KST` : "기록 대기"}</span></div><input aria-label="선택한 랩의 재생 위치" type="range" min="0" max={Math.max(0, (replayReady?.frames.length ?? 1) - 1)} value={frameIndex} disabled={!replayReady?.frames.length} onChange={(change) => { setPlaying(false); setFrameIndex(Number(change.target.value)); }} />{recentEvents.length > 0 && <div className="track-replay-events" aria-live="polite">{recentEvents.map((item) => <span className={item.kind} key={`${item.time}-${item.label}`} title={item.label}>{item.label}</span>)}</div>}</div>}
       {liveReady && !geometry && <p className="track-replay-note">트랙 윤곽을 수집하는 중입니다…</p>}
       {!liveReady && loading && <p className="track-replay-note">선택한 랩의 위치 기록을 불러오는 중입니다…</p>}
       {!liveReady && !loading && replay && !replay.available && <div className="track-replay-error"><p className="track-replay-note">{replay.reason}</p><button type="button" onClick={() => { replayCache.current.delete(`${event.slug}:${lap}:${driverNumber}`); setRetry((value) => value + 1); }}>다시 시도</button></div>}
