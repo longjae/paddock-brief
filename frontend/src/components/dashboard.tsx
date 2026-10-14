@@ -194,7 +194,8 @@ function localSessionLabel(session: EventDetail["sessions"][number], event: Even
 
 function weekendDayDescription(sessions: EventDetail["sessions"]): string {
   if (sessions.some((session) => session.shortName === "R")) return "레이스 결과, 전략, 타이어와 경기 후 반응을 함께 확인합니다.";
-  if (sessions.some((session) => ["Q", "S", "SQ"].includes(session.shortName))) return "스프린트와 예선 결과, 결승 그리드를 확인합니다.";
+  if (sessions.some((session) => ["S", "SQ"].includes(session.shortName))) return "스프린트와 예선 결과, 결승 그리드를 확인합니다.";
+  if (sessions.some((session) => session.shortName === "Q")) return "예선 결과와 결승 그리드를 확인합니다.";
   return "연습주행 페이스, 셋업 변화와 타이어 롱런을 확인합니다.";
 }
 
