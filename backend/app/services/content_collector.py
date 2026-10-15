@@ -59,7 +59,7 @@ class YouTubeSource:
 MEDIA_FEED_SOURCES = (
     MediaFeedSource("bbc-sport-f1", "BBC Sport F1", "https://www.bbc.co.uk/sport/formula1", "https://feeds.bbci.co.uk/sport/formula1/rss.xml"),
     MediaFeedSource("racefans", "RaceFans", "https://www.racefans.net/", "https://www.racefans.net/feed/"),
-    MediaFeedSource("sky-sports-f1", "Sky Sports F1", "https://www.skysports.com/f1", "https://www.skysports.com/rss/12040"),
+    MediaFeedSource("sky-sports-f1", "Sky Sports F1", "https://www.skysports.com/f1", "https://www.skysports.com/rss/12433"),
 )
 
 
@@ -335,7 +335,7 @@ def parse_article(url: str, page_html: str) -> SourceDocument:
         title=html.unescape(title),
         description=html.unescape(description),
         author=metadata.get("author") or "Formula 1",
-        published_at=metadata.get("article:published_time") or metadata.get("date") or (re.search(r'"datePublished"\s*:\s*"([^"]+)"', page_html) or [None, None])[1],
+        published_at=metadata.get("article:published_time") or metadata.get("date") or structured_publication_date(page_html),
         paragraphs=paragraphs,
     )
 
@@ -377,9 +377,15 @@ def parse_external_article(url: str, page_html: str, source_name: str, base_url:
             metadata.get("article:published_time")
             or metadata.get("datepublished")
             or metadata.get("date")
+            or structured_publication_date(page_html)
         ),
         paragraphs=paragraphs,
     )
+
+
+def structured_publication_date(page_html: str) -> str | None:
+    match = re.search(r'"datePublished"\s*:\s*"([^"]+)"', page_html)
+    return match.group(1) if match else None
 
 
 def parse_youtube_subtitle(payload: str, suffix: str) -> str:

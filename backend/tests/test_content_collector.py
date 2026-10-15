@@ -52,6 +52,20 @@ def test_bbc_feed_discovers_bbc_co_uk_links() -> None:
     assert discover_feed_article_urls(xml, source) == {"https://bbc.co.uk/sport/formula1/articles/example"}
 
 
+def test_sky_feed_is_f1_specific() -> None:
+    assert MEDIA_FEED_SOURCES[2].feed_url == "https://www.skysports.com/rss/12433"
+
+
+def test_media_article_uses_structured_publication_date() -> None:
+    article = parse_external_article(
+        "https://www.bbc.co.uk/sport/formula1/articles/example",
+        '<script type="application/ld+json">{"datePublished":"2026-10-14T17:02:47.781Z"}</script><p>Enough article text to parse and summarize later.</p>',
+        "BBC Sport F1",
+        "https://www.bbc.co.uk/sport/formula1",
+    )
+    assert article.published_at == "2026-10-14T17:02:47.781Z"
+
+
 def test_youtube_json3_subtitle_is_flattened_without_timing_metadata() -> None:
     payload = '{"events":[{"tStartMs":1000,"segs":[{"utf8":"Hello "},{"utf8":"paddock"}]},{"segs":[{"utf8":"Next lap"}]}]}'
     assert parse_youtube_subtitle(payload, ".json3") == "Hello paddock Next lap"

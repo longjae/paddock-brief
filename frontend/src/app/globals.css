@@ -278,6 +278,14 @@ h1 { font-size: clamp(46px, 6vw, 84px); letter-spacing: -.065em; line-height: .9
 .outlet-tabs button { flex: 0 0 auto; padding: 8px 11px; color: var(--muted); background: #111313; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; font-size: 10px; }
 .outlet-tabs button:hover, .outlet-tabs button.active { color: #fff; border-color: var(--f1-red); background: var(--f1-red); }
 .news-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.news-story { min-width: 0; }
+.news-story > .news-card { width: 100%; }
+.news-related { margin-top: 6px; padding: 10px 12px; color: var(--muted); background: #111313; border: 1px solid var(--line); border-radius: 8px; font-size: 11px; }
+.news-related summary { color: var(--lime); cursor: pointer; }
+.news-related button { display: flex; width: 100%; gap: 8px; align-items: baseline; padding: 10px 0 0; color: var(--ink); background: none; border: 0; font: inherit; text-align: left; cursor: pointer; }
+.news-related button b { flex: 0 0 auto; color: var(--lime); font-size: 10px; }
+.news-related button span { flex: 1; }
+.news-related button small { flex: 0 0 auto; color: var(--muted); }
 .news-card { min-height: 210px; display: flex; flex-direction: column; padding: 17px; color: var(--ink); background: linear-gradient(145deg, rgba(255,255,255,.035), rgba(255,255,255,.012)); border: 1px solid var(--line); border-radius: 12px; font: inherit; text-align: left; cursor: pointer; }
 .news-card:hover { border-color: rgba(225,6,0,.5); transform: translateY(-1px); }
 .news-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

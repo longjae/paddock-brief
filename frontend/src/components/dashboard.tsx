@@ -259,6 +259,29 @@ function newestFirst<T extends { publishedAt?: string | null }>(items: T[]): T[]
   return items.toSorted((left, right) => publishedTime(right.publishedAt) - publishedTime(left.publishedAt));
 }
 
+function newsTitleTerms(title: string): Set<string> {
+  const stopWords = new Set(["f1", "formula", "1", "그랑프리", "올", "시즌", "팀", "선수", "공식"]);
+  return new Set(title.toLocaleLowerCase().match(/[가-힣a-z0-9]+/g)?.map((word) => word.replace(/(에서|까지|으로|와|과|은|는|이|가|을|를|의)$/u, "")).filter((word) => word.length >= 2 && !stopWords.has(word)) ?? []);
+}
+
+function sameNewsStory(left: NewsArticle, right: NewsArticle): boolean {
+  if (left.outlet === right.outlet || Math.abs(publishedTime(left.publishedAt) - publishedTime(right.publishedAt)) > 48 * 60 * 60 * 1000) return false;
+  const leftTerms = newsTitleTerms(left.title);
+  const rightTerms = newsTitleTerms(right.title);
+  const shared = [...leftTerms].filter((term) => rightTerms.has(term));
+  return shared.length >= 3 && shared.length / Math.min(leftTerms.size, rightTerms.size) >= 0.5;
+}
+
+function groupNewsStories(articles: NewsArticle[]): NewsArticle[][] {
+  const groups: NewsArticle[][] = [];
+  newestFirst(articles).forEach((article) => {
+    const group = groups.find(([lead]) => sameNewsStory(lead, article));
+    if (group) group.push(article);
+    else groups.push([article]);
+  });
+  return groups;
+}
+
 function groupByPublishedDay<T extends { publishedAt?: string | null }>(items: T[]): Array<[string, T[]]> {
   const groups = new Map<string, T[]>();
   newestFirst(items).forEach((item) => {
@@ -675,7 +698,7 @@ export function Dashboard({
         <div className="page-heading"><div><p className="eyebrow">LATEST F1 NEWS</p><h1>F1 최신 뉴스</h1><p>그랑프리 일정과 관계없이 확인한 기사를 모았습니다. 발행 시각은 원문 기준입니다.</p></div><span>{latestNews.length} ARTICLES</span></div>
         {newsLoading ? <p className="empty-state">최신 기사를 불러오는 중입니다…</p> : newsError ? <p className="empty-state">기사를 불러오지 못했습니다. 잠시 후 다시 확인해 주세요.</p> : latestNews.length === 0 ? <p className="empty-state">최근 수집한 기사가 없습니다. 다음 수집 후 이곳에 표시됩니다.</p> : <>
           <div className="outlet-tabs" role="group" aria-label="매체 필터"><button className={activeOutlet === "all" ? "active" : ""} onClick={() => setActiveOutlet("all")} type="button">전체</button>{[...new Set(latestNews.map((article) => article.outlet))].map((outlet) => <button className={activeOutlet === outlet ? "active" : ""} key={outlet} onClick={() => setActiveOutlet(outlet)} type="button">{outlet}</button>)}</div>
-          <div className="news-grid">{newestFirst(latestNews.filter((article) => activeOutlet === "all" || article.outlet === activeOutlet)).map((article) => <button className="news-card" key={article.id} onClick={() => setSelectedContent(newsModalContent(article, "var(--f1-red)"))} type="button"><div className="news-meta"><b>{article.outlet}</b><span>{newsCategoryLabel(article.category)}</span></div><h3>{article.title}</h3><p>{shortBrief(article.summary)}</p><footer><small>{publicationLabel(article.publishedAt, currentTime)}</small><b>상세 요약 보기 ↗</b></footer></button>)}</div>
+          <div className="news-grid">{groupNewsStories(latestNews.filter((article) => activeOutlet === "all" || article.outlet === activeOutlet)).map(([article, ...related]) => <div className="news-story" key={article.id}><button className="news-card" onClick={() => setSelectedContent(newsModalContent(article, "var(--f1-red)"))} type="button"><div className="news-meta"><b>{article.outlet}</b><span>{newsCategoryLabel(article.category)}</span></div><h3>{article.title}</h3><p>{shortBrief(article.summary)}</p><footer><small>{publicationLabel(article.publishedAt, currentTime)}</small><b>상세 요약 보기 ↗</b></footer></button>{related.length > 0 && <details className="news-related"><summary>같은 소식의 다른 출처 · {related.length}건</summary>{related.map((item) => <button key={item.id} onClick={() => setSelectedContent(newsModalContent(item, "var(--f1-red)"))} type="button"><b>{item.outlet}</b><span>{item.title}</span><small>상세 요약 보기 ↗</small></button>)}</details>}</div>)}</div>
         </>}
       </section>}
 
