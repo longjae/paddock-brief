@@ -81,10 +81,11 @@ def main() -> int:
     inserted = 0
     fresh = 0
     inserted_by_source: dict[str, int] = {}
+    source_limit = max(2, (args.max_articles + len(sources) - 1) // len(sources))
     for code, name, base_url, official, url in candidates:
         if inserted >= args.max_articles:
             break
-        if inserted_by_source.get(code, 0) >= max(2, (args.max_articles + 1) // 2):
+        if inserted_by_source.get(code, 0) >= source_limit:
             continue
         if canonicalize_web_url(url, base_url) in existing:
             continue
