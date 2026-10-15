@@ -17,6 +17,7 @@ from app.services.repository import EventRepository, get_repository
 from app.services.openf1 import OpenF1Service, get_openf1_service
 from app.services.live_timing import LiveTimingService, get_live_timing_service
 from app.services.live_snapshot_store import get_live_snapshot_store
+from app.services.fia_documents import FIA_DOCUMENTS_URL, fetch_decision_documents
 
 router = APIRouter()
 LOGGER = logging.getLogger(__name__)
@@ -57,21 +58,23 @@ async def get_standings(
 
 @router.get("/events")
 async def list_events(
+    season: int | None = Query(None, ge=2020, le=2100),
     repository: EventRepository = Depends(get_repository),
     jolpica: JolpicaService = Depends(get_jolpica_service),
     openf1: OpenF1Service = Depends(get_openf1_service),
 ) -> list[dict[str, object]]:
+    year = season or datetime.now().year
+    reviewed = [event for event in repository.list_events() if int(event["season"]) == year]
     try:
-        calendar = await jolpica.list_events(datetime.now().year)
-        reviewed = repository.list_events()
+        calendar = await jolpica.list_events(year)
         merged = {(int(event["season"]), int(event["round"])): event for event in calendar}
         merged.update({(int(event["season"]), int(event["round"])): event for event in reviewed})
         return sorted(merged.values(), key=lambda event: (int(event["season"]), int(event["round"])))
     except (httpx.HTTPError, KeyError, ValueError):
         try:
-            return await openf1.list_events(datetime.now().year)
+            return await openf1.list_events(year)
         except (httpx.HTTPError, KeyError, ValueError):
-            return repository.list_events()
+            return reviewed
 
 
 @router.get("/events/featured", response_model=EventDetail)
@@ -81,7 +84,7 @@ async def get_featured_event(
     openf1: OpenF1Service = Depends(get_openf1_service),
 ) -> EventDetail:
     try:
-        events = await list_events(repository, jolpica, openf1)
+        events = await list_events(repository=repository, jolpica=jolpica, openf1=openf1)
         now = datetime.now().astimezone()
         opened = [event for event in events if event.get("mediaOpenAt") and datetime.fromisoformat(str(event["mediaOpenAt"])) <= now]
         selected = opened[-1] if opened else events[0]
@@ -119,6 +122,21 @@ async def get_event(
     except (httpx.HTTPError, KeyError, ValueError):
         pass
     raise HTTPException(status_code=404, detail="Event not found") from None
+
+
+@router.get("/events/{slug}/fia-documents")
+async def get_fia_documents(
+    slug: str,
+    repository: EventRepository = Depends(get_repository),
+    jolpica: JolpicaService = Depends(get_jolpica_service),
+    openf1: OpenF1Service = Depends(get_openf1_service),
+) -> dict[str, object]:
+    event = await get_event(slug, repository, jolpica, openf1)
+    try:
+        return await fetch_decision_documents(event.season, event.name)
+    except httpx.HTTPError:
+        LOGGER.warning("FIA documents unavailable for %s", slug, exc_info=True)
+        return {"sourceUrl": FIA_DOCUMENTS_URL, "documents": [], "unavailable": True}
 
 
 @router.get("/events/{slug}/videos")

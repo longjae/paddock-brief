@@ -15,8 +15,17 @@ from app.services.openf1 import _featured_meeting, _slug
 from app.services.media_window import media_window
 from app.services.repository import EventRepository
 from app.api import routes
+from app.services.fia_documents import DecisionDocumentParser, event_documents_url
 
 client = TestClient(app)
+
+
+def test_fia_document_parser_keeps_decisions_and_penalties() -> None:
+    parser = DecisionDocumentParser()
+    parser.feed('''<ul><li class="document-row"><a href="/system/files/decision-document/decision.pdf"><div class="title">Doc 12 - Decision - Car 44</div><div class="published">Published on 25.10.26 18:00 CET</div></a></li><li class="document-row"><a href="/system/files/decision-document/classification.pdf"><div class="title">Final classification</div></a></li></ul>''')
+    assert len(parser.documents) == 1
+    assert parser.documents[0]["url"] == "https://www.fia.com/system/files/decision-document/decision.pdf"
+    assert "season-2026-2072" in event_documents_url(2026, "United States Grand Prix")
 
 
 def test_meeting_slugs_do_not_collide_for_same_country() -> None:

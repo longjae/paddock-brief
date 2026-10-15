@@ -31,6 +31,8 @@ type ModalContent = {
 export type MainSection = "weekend" | "news" | "interviews" | "championship" | "live" | "glossary";
 export type InterviewSection = "press" | "teams" | "drivers" | "videos" | "media";
 type WeekendDay = "목요일" | "금요일" | "토요일" | "일요일";
+type FiaDocument = { title: string; publishedAt: string; url: string };
+type FiaDocumentResponse = { sourceUrl: string; documents: FiaDocument[]; unavailable?: boolean };
 
 const WEEKEND_DAYS: WeekendDay[] = ["목요일", "금요일", "토요일", "일요일"];
 const WEEKEND_DAY_CODES: Record<WeekendDay, string> = { 목요일: "THU", 금요일: "FRI", 토요일: "SAT", 일요일: "SUN" };
@@ -407,6 +409,8 @@ export function Dashboard({
   const router = useRouter();
   const [event, setEvent] = useState<EventDetail>(demoEvent);
   const [events, setEvents] = useState<EventSummary[]>([]);
+  const [seasonLoading, setSeasonLoading] = useState(false);
+  const [fiaDocuments, setFiaDocuments] = useState<FiaDocumentResponse | null>(null);
   const [source, setSource] = useState<"sample" | "api">("sample");
   const [activeVideo, setActiveVideo] = useState(event.videos[0]?.id);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
@@ -465,7 +469,7 @@ export function Dashboard({
     let active = true;
     Promise.all([
       fetch(`${API_BASE}/events/${initialEventSlug ?? "featured"}`, { signal: controller.signal }),
-      fetch(`${API_BASE}/events`, { signal: controller.signal }),
+      fetch(`${API_BASE}/events?season=${initialEventSlug?.slice(0, 4) ?? new Date().getFullYear()}`, { signal: controller.signal }),
     ])
       .then(async ([featuredResponse, eventsResponse]) => {
         if (!featuredResponse.ok || !eventsResponse.ok) throw new Error("API unavailable");
@@ -474,6 +478,7 @@ export function Dashboard({
       .then(([featured, calendar]) => {
         setEvent(featured);
         setEvents(calendar);
+        setSeasonLoading(false);
         setActiveVideo(featured.videos[0]?.id);
         setActiveTeam(null);
         setActiveOutlet("all");
@@ -490,6 +495,36 @@ export function Dashboard({
       controller.abort();
     };
   }, [initialEventSlug]);
+
+  useEffect(() => {
+    if (activeSection !== "weekend") return;
+    const controller = new AbortController();
+    setFiaDocuments(null);
+    fetch(`${API_BASE}/events/${event.slug}/fia-documents`, { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error("FIA documents unavailable");
+        return response.json() as Promise<FiaDocumentResponse>;
+      })
+      .then(setFiaDocuments)
+      .catch((error: unknown) => {
+        if (!(error instanceof DOMException && error.name === "AbortError")) setFiaDocuments({ sourceUrl: "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14", documents: [], unavailable: true });
+      });
+    return () => controller.abort();
+  }, [activeSection, event.slug]);
+
+  async function selectSeason(season: number) {
+    setSeasonLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/events?season=${season}`);
+      if (!response.ok) throw new Error("Calendar unavailable");
+      const calendar = await response.json() as EventSummary[];
+      if (calendar.length === 0) throw new Error("No races in season");
+      setEvents(calendar);
+      router.push(pageHref(activeSection, calendar.at(-1)?.slug, interviewSection));
+    } catch {
+      setSeasonLoading(false);
+    }
+  }
 
   useEffect(() => {
     if (activeSection !== "news") return;
@@ -673,7 +708,7 @@ export function Dashboard({
           <Link className={activeSection === "live" ? "active" : ""} href={pageHref("live", event.slug)}>Live</Link>
           <Link className={activeSection === "glossary" ? "active" : ""} href={pageHref("glossary", event.slug)}>F1 용어집</Link>
         </nav>
-        {activeSection !== "news" && <label className="event-select-wrap"><span>{event.season} 시즌</span><select className="event-select" aria-label="그랑프리 선택" value={event.slug} onChange={(change) => router.push(pageHref(activeSection, change.target.value, interviewSection))}>
+        {activeSection !== "news" && <label className="event-select-wrap"><span>시즌</span><select className="season-select" aria-label="시즌 선택" value={event.season} disabled={seasonLoading} onChange={(change) => void selectSeason(Number(change.target.value))}>{Array.from({ length: Math.max(1, new Date().getFullYear() - 2019) }, (_, index) => new Date().getFullYear() - index).map((season) => <option value={season} key={season}>{season}</option>)}</select><select className="event-select" aria-label="그랑프리 선택" value={event.slug} onChange={(change) => router.push(pageHref(activeSection, change.target.value, interviewSection))}>
           {events.length === 0 && <option value={event.slug}>{event.name}</option>}
           {events.map((calendarEvent) => <option key={calendarEvent.slug} value={calendarEvent.slug}>R{calendarEvent.round} · {calendarEvent.name}</option>)}
         </select></label>}
@@ -752,6 +787,10 @@ export function Dashboard({
               <div className="briefing panel"><p className="eyebrow">RACE BRIEF</p>{event.summary.map((item, index) => <p key={item}><span>0{index + 1}</span>{item}</p>)}</div>
             </div>
           </div>
+          <section className="panel fia-documents" aria-labelledby="fia-documents-heading">
+            <div className="section-heading compact"><div><p className="eyebrow">FIA OFFICIAL DOCUMENTS</p><h2 id="fia-documents-heading">판정 · 페널티 원문</h2></div><a href={fiaDocuments?.sourceUrl ?? "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14"} target="_blank" rel="noreferrer">FIA 문서함 ↗</a></div>
+            {!fiaDocuments ? <p className="empty-state">공식 문서를 확인하는 중입니다…</p> : fiaDocuments.documents.length > 0 ? <div className="fia-document-list">{fiaDocuments.documents.map((document) => <a href={document.url} target="_blank" rel="noreferrer" key={document.url}><span>{document.title}</span><small>{document.publishedAt || "FIA PDF"} ↗</small></a>)}</div> : <p className="empty-state">{fiaDocuments.unavailable ? "FIA 문서함을 불러오지 못했습니다. 공식 문서함에서 확인해 주세요." : "이 GP에 게시된 판정·페널티 문서가 아직 없습니다."}</p>}
+          </section>
           <details className="weekend-report-details"><summary>전체 브리핑 · {weekendNews.length}건 펼치기 <span>날짜별 보도와 상세 요약</span></summary><div className="weekend-feed panel">
             <div className="section-heading compact"><div><p className="eyebrow">DAILY REPORTS</p><h2>날짜별 레이스 자료</h2></div><span>{weekendNews.length} ARTICLES</span></div>
             {weekendNewsByDate.map(([day, articles]) => (
