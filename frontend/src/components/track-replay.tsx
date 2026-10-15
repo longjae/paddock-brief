@@ -23,6 +23,7 @@ export function TrackReplay({ event, selectedDriverNumber = 0, liveTrack }: { ev
   const [lap, setLap] = useState(1);
   const [maxLap, setMaxLap] = useState(1);
   const [frameIndex, setFrameIndex] = useState(0);
+  const [frameProgress, setFrameProgress] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(4);
   const [driverNumber, setDriverNumber] = useState(0);
@@ -41,6 +42,7 @@ export function TrackReplay({ event, selectedDriverNumber = 0, liveTrack }: { ev
     setLap(1);
     setMaxLap(1);
     setFrameIndex(0);
+    setFrameProgress(0);
     setPlaying(false);
     setPlaybackSpeed(4);
     setDriverNumber(0);
@@ -109,7 +111,26 @@ export function TrackReplay({ event, selectedDriverNumber = 0, liveTrack }: { ev
     return () => window.clearTimeout(timer);
   }, [playing, replayReady, frameIndex, lap, playbackSpeed]);
 
+  useEffect(() => {
+    setFrameProgress(0);
+    if (!playing || !replayReady || frameIndex >= replayReady.frames.length - 1) return;
+    const duration = replayReady.frameSeconds * 1000 / playbackSpeed;
+    const startedAt = performance.now();
+    let animationFrame = 0;
+    let lastUpdate = 0;
+    const animate = (now: number) => {
+      if (now - lastUpdate >= 32 || now - startedAt >= duration) {
+        setFrameProgress(Math.min(1, (now - startedAt) / duration));
+        lastUpdate = now;
+      }
+      if (now - startedAt < duration) animationFrame = requestAnimationFrame(animate);
+    };
+    animationFrame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animationFrame);
+  }, [playing, replayReady, frameIndex, playbackSpeed]);
+
   const frame = replayReady?.frames[Math.min(frameIndex, replayReady.frames.length - 1)] ?? null;
+  const nextFrame = replayReady?.frames[frameIndex + 1] ?? null;
   const recentEvents = frame ? replayReady?.events?.filter((item) => {
     const age = new Date(frame.time).getTime() - new Date(item.time).getTime();
     return age >= 0 && age < 20_000;
@@ -119,9 +140,13 @@ export function TrackReplay({ event, selectedDriverNumber = 0, liveTrack }: { ev
     const driver = event.eventDrivers.find((item) => String(item.number) === position.number);
     return { ...position, number: Number(position.number), code: driver?.code || `#${position.number}`, team: driver?.team || "", colour: driver?.colour || "#e10600" };
   }) : [];
+  const nextPositions = new Map(nextFrame?.positions.map((position) => [position.number, position]) ?? []);
   const replayPositions = frame?.positions.map((position) => {
     const driver = standings.find((item) => item.number === position.number);
-    return { ...position, code: driver?.code || `#${position.number}`, team: driver?.team || "", colour: driver?.colour || "#e10600" };
+    const next = nextPositions.get(position.number);
+    return { ...position, x: next ? position.x + (next.x - position.x) * frameProgress : position.x,
+      y: next ? position.y + (next.y - position.y) * frameProgress : position.y,
+      code: driver?.code || `#${position.number}`, team: driver?.team || "", colour: driver?.colour || "#e10600" };
   }) ?? [];
   const positions = liveReady ? livePositions : replayPositions;
   const focusNumber = positions.some((position) => position.number === driverNumber) ? driverNumber :
@@ -159,7 +184,7 @@ export function TrackReplay({ event, selectedDriverNumber = 0, liveTrack }: { ev
         {car ? <><b>{car.speed} <small>km/h</small></b><span>{car.gear} <small>GEAR</small></span><span>{car.rpm.toLocaleString()} <small>RPM</small></span><span>{car.throttle}% <small>THROTTLE</small></span><span>{car.brake ? "ON" : "OFF"} <small>BRAKE</small></span></> : <span>차량 데이터 없음</span>}
       </div>}
       {liveReady && <p className="track-replay-source">F1 라이브 피드 · 위치 신호 {liveAgeSeconds}초 전 · 좌표는 대략적인 위치입니다.</p>}
-      {!liveReady && replayReady && <p className="track-replay-source">최종 순위 기준 선수 목록 · 약 2초 간격 위치 기록 · <a href="https://openf1.org/docs/" target="_blank" rel="noreferrer">OpenF1 데이터</a> · 실시간 아님</p>}
+      {!liveReady && replayReady && <p className="track-replay-source">최종 순위 기준 선수 목록 · 약 2초 간격 위치 기록 사이를 화면에서 부드럽게 연결 · <a href="https://openf1.org/docs/" target="_blank" rel="noreferrer">OpenF1 데이터</a> · 실시간 아님</p>}
     </>}
   </section>;
 }
