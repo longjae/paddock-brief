@@ -1015,7 +1015,7 @@ export function Dashboard({
 
       {activeSection === "glossary" && <section className="section-page glossary-page" id="glossary">
         <div className="page-heading glossary-heading">
-          <div><p className="eyebrow">F1 GLOSSARY</p><h2>레이스를 읽는 F1 용어집</h2><p>중계와 기사에서 자주 나오는 표현을 한국어 설명과 실제 레이스 상황으로 정리했습니다.</p></div>
+          <div><p className="eyebrow">F1 GLOSSARY</p><h2>레이스를 읽는 F1 용어집</h2><p>중계와 기사에서 자주 나오는 표현을 한국어 설명과 실제 레이스 상황으로 정리했습니다. 2026년 규정 용어도 반영했습니다.</p><a href="https://www.formula1.com/en/page/f1-glossary" target="_blank" rel="noreferrer">F1 공식 용어집 ↗</a></div>
           <label className="glossary-search"><span>용어 검색</span><input aria-label="F1 용어 검색" onChange={(change) => setGlossaryQuery(change.target.value)} placeholder="언더컷, DRS, 타이어…" type="search" value={glossaryQuery} /></label>
         </div>
         <div className="glossary-categories" role="tablist" aria-label="F1 용어 카테고리">
