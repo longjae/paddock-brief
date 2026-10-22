@@ -43,8 +43,8 @@ function stats(laps: Lap[]) {
   };
 }
 
-export function LapComparison({ event }: { event: EventDetail }) {
-  const [selectedSession, setSelectedSession] = useState(() => defaultSession(event));
+export function LapComparison({ event, initialSession }: { event: EventDetail; initialSession?: string }) {
+  const [selectedSession, setSelectedSession] = useState(() => initialSession ?? defaultSession(event));
   const [results, setResults] = useState<Results | null>(null);
   const [driverA, setDriverA] = useState(0);
   const [driverB, setDriverB] = useState(0);
@@ -54,10 +54,10 @@ export function LapComparison({ event }: { event: EventDetail }) {
   const [retry, setRetry] = useState(0);
 
   useEffect(() => {
-    setSelectedSession(defaultSession(event));
+    setSelectedSession(initialSession ?? defaultSession(event));
     setResults(null);
     setLapData(null);
-  }, [event.slug, event]);
+  }, [event.slug, event, initialSession]);
 
   useEffect(() => {
     if (!event.sessions.some((session) => session.shortName === selectedSession)) return;

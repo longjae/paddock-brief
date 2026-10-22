@@ -34,6 +34,11 @@ function mergeRaceControl(
 
 export function LiveTiming({ event }: { event: EventDetail }) {
   const [snapshot, setSnapshot] = useState<LiveTimingSnapshot | null>(null);
+  const [selectedSession, setSelectedSession] = useState("auto");
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState(false);
+  const [historyRetry, setHistoryRetry] = useState(0);
+  const historyCache = useRef(new Map<string, LiveTimingSnapshot>());
   const [clockTime, setClockTime] = useState(0);
   const [streamState, setStreamState] = useState<"opening" | "open" | "retrying">("opening");
   const [radioTranscripts, setRadioTranscripts] = useState<Record<string, RadioTranscript>>({});
@@ -107,19 +112,39 @@ export function LiveTiming({ event }: { event: EventDetail }) {
     let lastStreamMessageAt = 0;
     raceControlSession.current = "";
     setSnapshot(null);
+    setHistoryError(false);
+    setHistoryLoading(selectedSession !== "auto");
     setRaceControlHistory([]);
     setRadioTranscripts({});
     setOpenRadioPath("");
     setMobilePanel("timing");
     setSelectedDriverNumber(0);
+    const cached = historyCache.current.get(`${event.slug}:${selectedSession}`);
+    if (selectedSession !== "auto" && cached) {
+      acceptSnapshot(cached);
+      setHistoryLoading(false);
+      return;
+    }
     const loadState = () => {
       const requestedAt = Date.now();
-      return fetch(`${API_BASE}/events/${event.slug}/race-state`, { cache: "no-store" })
+      const path = selectedSession === "auto" ? "race-state" : `sessions/${selectedSession}/timing`;
+      return fetch(`${API_BASE}/events/${event.slug}/${path}`, { cache: "no-store" })
       .then((response) => { if (!response.ok) throw new Error("live state unavailable"); return response.json() as Promise<LiveTimingSnapshot>; })
-      .then((state) => { if (active && lastStreamMessageAt <= requestedAt) acceptSnapshot(state); })
-      .catch(() => { if (active) setStreamState("retrying"); });
+      .then((state) => {
+        if (active && lastStreamMessageAt <= requestedAt) {
+          setHistoryError(false);
+          acceptSnapshot(state);
+          if (state.archived && state.session.ended && state.drivers.length) historyCache.current.set(`${event.slug}:${selectedSession}`, state);
+        }
+      })
+      .catch(() => { if (active) { setStreamState("retrying"); setHistoryError(selectedSession !== "auto"); } })
+      .finally(() => { if (active) setHistoryLoading(false); });
     };
     void loadState();
+    if (selectedSession !== "auto") {
+      const poll = window.setInterval(() => { void loadState(); }, 60_000);
+      return () => { active = false; window.clearInterval(poll); };
+    }
     const poll = window.setInterval(() => { if (Date.now() - lastStreamMessageAt > 8_000) void loadState(); }, 15_000);
     const stream = new EventSource(`${API_BASE}/events/${event.slug}/live-stream`);
     stream.addEventListener("open", () => active && setStreamState("open"));
@@ -130,21 +155,28 @@ export function LiveTiming({ event }: { event: EventDetail }) {
     });
     stream.addEventListener("error", () => active && setStreamState("retrying"));
     return () => { active = false; window.clearInterval(poll); stream.close(); };
-  }, [event.slug]);
+  }, [event.slug, selectedSession, historyRetry]);
 
   const raceSession = event.sessions.find((session) => session.shortName === "R");
-  const upcomingRace = isBeforeFirstSession(event.sessions, clockTime || Date.now(), snapshot?.isLive);
+  const chosenSession = event.sessions.find((session) => session.shortName === selectedSession);
+  const selectedDataReady = selectedSession === "auto" || snapshot?.session.name === chosenSession?.name;
+  const upcomingRace = chosenSession ? new Date(`${chosenSession.startsAt.replace(" ", "T")}:00+09:00`).getTime() > (clockTime || Date.now()) : isBeforeFirstSession(event.sessions, clockTime || Date.now(), snapshot?.isLive);
   const raceEnded = raceSession?.status === "done" || (raceSession ? new Date(`${raceSession.startsAt.replace(" ", "T")}:00+09:00`).getTime() < Date.now() - 5 * 60 * 60_000 : false);
-  const sessionEnded = raceEnded || snapshot?.session.remaining === "00:00:00";
-  const updatedLabel = useMemo(() => !snapshot?.updatedAt ? "아직 수신된 라이브 신호가 없습니다" : `${new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Asia/Seoul" }).format(new Date(snapshot.updatedAt))} KST ${sessionEnded ? "피드 확인" : "갱신"}`, [snapshot?.updatedAt, sessionEnded]);
+  const sessionEnded = snapshot?.archived ? snapshot.session.ended === true : raceEnded || snapshot?.session.remaining === "00:00:00";
+  const replaySession = chosenSession ?? event.sessions.find((session) => session.name === snapshot?.session.name) ?? event.sessions.filter((session) => new Date(`${session.startsAt.replace(" ", "T")}:00+09:00`).getTime() <= (clockTime || Date.now())).at(-1) ?? event.sessions[0];
+  const updatedLabel = useMemo(() => snapshot?.archived ? "선택한 세션의 공개 기록" : !snapshot?.updatedAt ? "아직 수신된 라이브 신호가 없습니다" : `${new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Asia/Seoul" }).format(new Date(snapshot.updatedAt))} KST ${sessionEnded ? "피드 확인" : "갱신"}`, [snapshot?.updatedAt, snapshot?.archived, sessionEnded]);
   const connection = snapshot?.connection ?? (streamState === "retrying" ? "reconnecting" : "connecting");
   const feedAgeSeconds = snapshot?.updatedAt && clockTime ? Math.max(0, Math.floor((clockTime - new Date(snapshot.updatedAt).getTime()) / 1000)) : null;
   const feedStale = !sessionEnded && snapshot?.isLive && feedAgeSeconds !== null && feedAgeSeconds > 30;
-  const statusLabel = sessionEnded ? "종료 세션 · 마지막 기록" : feedStale ? "데이터 갱신 지연" : snapshot?.isLive ? "실시간" : snapshot?.delaySeconds !== null && snapshot?.delaySeconds !== undefined && snapshot.drivers.length ? "저장된 마지막 기록" : upcomingRace ? "레이스 예정" : connection === "live" ? "피드 연결 · 세션 대기" : STATUS_LABEL[connection];
+  const statusLabel = historyLoading ? "세션 기록 확인 중" : historyError ? "기록 연결 확인 필요" : snapshot?.archived ? `${selectedSession} · ${snapshot.archiveStatus === "upcoming" ? "시작 전" : "공개 기록"}` : sessionEnded ? "종료 세션 · 마지막 기록" : feedStale ? "데이터 갱신 지연" : snapshot?.isLive ? "실시간" : snapshot?.delaySeconds !== null && snapshot?.delaySeconds !== undefined && snapshot.drivers.length ? "저장된 마지막 기록" : upcomingRace ? "레이스 예정" : connection === "live" ? "피드 연결 · 세션 대기" : STATUS_LABEL[connection];
   const weather = snapshot?.weather ?? {};
 
   return <section className="section-page live-page" id="live">
-    <div className="page-heading live-heading"><div><p className="eyebrow">LIVE TIMING</p><h2>{event.name}<small>{snapshot?.session.name || "세션 연결 중"}</small></h2></div><div className={`live-connection ${sessionEnded ? "ended" : feedStale ? "stale" : snapshot?.isLive ? "connected" : connection}`} role="status"><span /><div><b>{statusLabel}</b><small>{updatedLabel}{feedStale ? ` · ${feedAgeSeconds}초 전` : ""}</small></div></div></div>
+    <div className="page-heading live-heading"><div><p className="eyebrow">LIVE TIMING</p><h2>{event.name}<small>{chosenSession?.name || snapshot?.session.name || "세션 연결 중"}</small></h2></div><div className={`live-connection ${sessionEnded ? "ended" : feedStale ? "stale" : snapshot?.isLive ? "connected" : connection}`} role="status"><span /><div><b>{statusLabel}</b><small>{updatedLabel}{feedStale ? ` · ${feedAgeSeconds}초 전` : ""}</small></div></div></div>
+    <div className="live-session-toolbar"><label>세션 <select aria-label="라이브 세션 선택" value={selectedSession} onChange={(change) => setSelectedSession(change.target.value)}><option value="auto">자동 · 실시간 / 마지막 수신</option>{event.sessions.map((session) => <option key={session.shortName} value={session.shortName}>{session.shortName} · {session.name}</option>)}</select></label><span>{selectedSession === "auto" ? "현재 라이브 피드를 연결합니다. 지난 세션은 목록에서 선택하세요." : `${chosenSession?.startsAt ?? ""} KST · 세션별 공개 기록`}</span></div>
+    {historyLoading && <p className="empty-state" role="status">{selectedSession} 기록을 불러오는 중입니다…</p>}
+    {historyError && <div className="session-error"><p>선택한 세션 기록을 불러오지 못했습니다.</p><button type="button" onClick={() => { historyCache.current.delete(`${event.slug}:${selectedSession}`); setHistoryRetry((value) => value + 1); }}>다시 시도</button></div>}
+    {snapshot?.archived && <p className="mini-sector-help">선택한 세션의 최종 순위와 마지막 완성 랩을 보여줍니다. 미니섹터·라디오 등 공개되지 않은 항목은 비어 있을 수 있습니다. 트랙 리플레이의 랩은 별도로 선택합니다.</p>}
     {upcomingRace && <section className="live-upcoming" aria-label="선택한 그랑프리 일정"><div><p className="eyebrow">UPCOMING GRAND PRIX</p><strong>{event.name}</strong><span>{event.circuit} · {event.dateLabel}</span></div><div className="live-upcoming-sessions">{event.sessions.map((session) => <div key={session.shortName}><b>{session.shortName}</b><span>{session.name}</span><time>{session.startsAt} KST</time></div>)}</div></section>}
     {upcomingRace && <section className="panel live-upcoming-map" aria-label="선택한 그랑프리 공식 트랙맵"><header><div><p className="eyebrow">CIRCUIT MAP</p><h3>공식 트랙맵</h3></div></header><OfficialCircuitMap event={event} /></section>}
     {upcomingRace && <p className="live-upcoming-note">첫 세션이 시작되면 순위, 미니섹터, 레이스 컨트롤과 팀 라디오가 표시됩니다.</p>}
@@ -166,11 +198,11 @@ export function LiveTiming({ event }: { event: EventDetail }) {
       {([ ["timing", "순위"], ["track", "트랙맵"], ["control", "레이스 컨트롤"], ["radio", "팀 라디오"], ["laps", "랩 비교"] ] as const).map(([panel, label]) => <button key={panel} type="button" aria-current={mobilePanel === panel ? "page" : undefined} onClick={() => setMobilePanel(panel)}>{label}</button>)}
     </nav>
     <div className="live-grid">
-      <section className={`panel live-tower ${mobilePanel === "timing" ? "mobile-active" : ""}`}><header><div><p className="eyebrow">TIMING TOWER</p><h3>실시간 순위</h3></div><span>{snapshot?.drivers.length ?? 0} DRIVERS</span></header>
+      <section className={`panel live-tower ${mobilePanel === "timing" ? "mobile-active" : ""}`}><header><div><p className="eyebrow">TIMING TOWER</p><h3>{snapshot?.archived ? "세션 최종 순위" : "실시간 순위"}</h3></div><span>{snapshot?.drivers.length ?? 0} DRIVERS</span></header>
         <div className="live-sector-meta"><strong>타이밍 · 미니섹터</strong><p className="mini-sector-legend"><span className="yellow" />일반 기록 <span className="green" />개인 최고 <span className="purple" />전체 최고 <span className="pit" />피트 <span className="unknown" />미제공</p></div>
-        <p className="mini-sector-help">막대 상태와 섹터 시간은 별도 신호입니다. 한쪽만 들어올 수 있습니다. 회색 막대는 구간 상태 미제공, ‘—’는 섹터 시간 미제공입니다.{sessionEnded ? " 현재는 종료된 세션의 마지막 수신값을 보여줍니다." : ""}</p>
+        <p className="mini-sector-help">막대 상태와 섹터 시간은 별도 신호입니다. 한쪽만 들어올 수 있습니다. 회색 막대는 구간 상태 미제공, ‘—’는 섹터 시간 미제공입니다.{snapshot?.archived ? " 현재는 선택한 세션의 마지막 완성 랩 기록입니다." : sessionEnded ? " 현재는 종료된 세션의 마지막 수신값을 보여줍니다." : ""}</p>
         <div className="live-tower-head"><span>POS</span><span>DRIVER</span><span>LAST</span><span>BEST</span><span>INTERVAL</span><span>GAP</span><span>MINI SECTORS · S1 / S2 / S3</span><span>TYRE / STINT</span></div><div className="live-tower-list">
-        {!snapshot?.drivers.length && <p className="empty-state">{raceEnded ? "이 GP의 레이스는 종료됐습니다. 저장된 라이브 순위가 없습니다. 트랙맵의 위치 기록과 위켄드의 최종 결과를 확인하세요." : "세션이 시작되면 실시간 순위가 표시됩니다. 현재는 라이브 수집기 연결을 기다리고 있습니다."}</p>}
+        {!snapshot?.drivers.length && <p className="empty-state">{selectedSession !== "auto" ? historyLoading ? "선택한 세션의 기록을 확인하고 있습니다." : historyError ? "세션 기록 연결을 다시 시도해 주세요." : "선택한 세션의 공개 순위 기록이 없습니다." : raceEnded ? "이 GP의 레이스는 종료됐습니다. 저장된 라이브 순위가 없습니다. 위의 세션 선택에서 공개 기록을 확인하세요." : "세션이 시작되면 실시간 순위가 표시됩니다. 현재는 라이브 수집기 연결을 기다리고 있습니다."}</p>}
         {snapshot?.drivers.map((driver) => <article className={`${driver.inPit ? "in-pit" : ""} ${driver.retired ? "retired" : ""}`} key={driver.number} style={{ "--driver-colour": driver.colour } as React.CSSProperties}>
           <b>{driver.position}</b>
           <div className="live-driver-name"><i /><strong>{driver.code}</strong><small>{driver.team}</small></div>
@@ -192,7 +224,7 @@ export function LiveTiming({ event }: { event: EventDetail }) {
           </div>
         </article>)}
       </div></section>
-      <div className={`live-track-slot ${mobilePanel === "track" ? "mobile-active" : ""}`}><TrackReplay event={event} selectedDriverNumber={selectedDriverNumber} liveTrack={snapshot?.track} /></div>
+      <div className={`live-track-slot ${mobilePanel === "track" ? "mobile-active" : ""}`}>{selectedDataReady && !historyLoading ? <TrackReplay key={`${event.slug}:${replaySession?.shortName}`} event={event} selectedDriverNumber={selectedDriverNumber} liveTrack={snapshot?.track} sessionShortName={replaySession?.shortName} sessionEnded={snapshot?.session.ended} /> : <p className="empty-state">세션 기록 확인 후 트랙 리플레이가 표시됩니다.</p>}</div>
     </div>
     <div className="live-feed-grid">
         <section className={`panel live-feed-panel control-panel ${mobilePanel === "control" ? "mobile-active" : ""}`}><header><div><p className="eyebrow">RACE CONTROL</p><h3>레이스 컨트롤</h3></div><span>{raceControlHistory.length} MESSAGES</span></header><div className="live-message-list">{!raceControlHistory.length && <p className="empty-state">공식 메시지를 기다리고 있습니다.</p>}{raceControlHistory.map((message, index) => <article key={`${value(message, "Utc")}-${value(message, "Message")}-${index}`}><time>{value(message, "Utc").slice(11, 19) || "—"}</time><p>{value(message, "Message") || value(message, "Category")}</p></article>)}</div></section>
@@ -214,7 +246,7 @@ export function LiveTiming({ event }: { event: EventDetail }) {
         })}</div></section>
     </div>
     </>}
-    <div className={`live-lap-slot ${mobilePanel === "laps" ? "mobile-active" : ""}`}><LapComparison event={event} /></div>
+    {selectedDataReady && !historyLoading && <div className={`live-lap-slot ${mobilePanel === "laps" ? "mobile-active" : ""}`}><LapComparison event={event} initialSession={replaySession?.shortName} /></div>}
     <p className="live-disclaimer">F1의 비공식 라이브 타이밍 피드를 사용합니다. 중계 화면보다 지연되거나 일부 항목이 제공되지 않을 수 있습니다. 최종 결과는 경기 종료 후 공식 자료로 보정합니다.</p>
   </section>;
 }

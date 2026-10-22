@@ -147,12 +147,15 @@ export type LiveTimingDriver = {
 };
 
 export type LiveTimingSnapshot = {
+  archived?: boolean;
+  archiveStatus?: "upcoming" | "pending" | "published";
+  source?: string;
   event: string;
   connection: "disabled" | "offline" | "connecting" | "reconnecting" | "live";
   isLive: boolean;
   updatedAt?: string | null;
   delaySeconds?: number | null;
-  session: { name: string; meeting?: string | null; remaining: string; lap: number; totalLaps: number };
+  session: { name: string; meeting?: string | null; remaining: string; lap: number; totalLaps: number; ended?: boolean };
   trackStatus: { code: string; message: string };
   weather: Record<string, string | number | boolean | null>;
   fastestLap?: { driver: string; time: string } | null;

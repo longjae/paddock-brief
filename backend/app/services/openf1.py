@@ -11,6 +11,7 @@ from app.schemas import EventDetail
 from app.services.media_window import media_window
 from app.services.sample_data import DEMO_EVENT
 from app.services.time_format import format_kst_date_range, format_kst_datetime
+from app.services.session_timing import historical_snapshot
 
 
 OPENF1_BASE_URL = "https://api.openf1.org/v1"
@@ -60,6 +61,7 @@ class OpenF1Service:
         self._sessions: dict[int, list[dict[str, Any]]] = {}
         self._session_data_cache: dict[int, tuple[float, dict[str, Any]]] = {}
         self._lap_cache: dict[tuple[int, int, int], tuple[float, dict[str, Any]]] = {}
+        self._timing_cache: dict[int, tuple[float, dict[str, Any]]] = {}
         self._lock = asyncio.Lock()
 
     async def _get(self, resource: str, **params: object) -> list[dict[str, Any]]:
@@ -199,6 +201,31 @@ class OpenF1Service:
         result = {"status": "published" if payload else "pending", "session": short_name, "drivers": payload, "maxLap": max_lap, "source": "OpenF1"}
         if payload:
             self._session_data_cache[key] = (time.monotonic() + 300, result)
+        return result
+
+    async def session_timing(self, event: EventDetail, short_name: str) -> dict[str, Any] | None:
+        session = await self._matching_session(event, short_name)
+        if session is None:
+            return None
+        cached = self._timing_cache.get(session["session_key"])
+        if cached and cached[0] > time.monotonic():
+            return cached[1]
+        results = await self.session_data(event, short_name)
+        if results is None:
+            return None
+        if results["status"] == "upcoming":
+            return historical_snapshot(event.slug, session, results, [], [], [], [])
+        # Keep optional feed failures separate so published results remain usable.
+        async def optional(resource: str) -> list[dict[str, Any]]:
+            try:
+                return await self._get(resource, session_key=session["session_key"])
+            except httpx.HTTPError:
+                return []
+        laps, control = await asyncio.gather(optional("laps"), optional("race_control"))
+        radio, weather = await asyncio.gather(optional("team_radio"), optional("weather"))
+        result = historical_snapshot(event.slug, session, results, laps, control, radio, weather)
+        if results["drivers"]:
+            self._timing_cache[session["session_key"]] = (time.monotonic() + 300, result)
         return result
 
     async def _matching_session(self, event: EventDetail, short_name: str) -> dict[str, Any] | None:

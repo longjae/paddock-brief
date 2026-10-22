@@ -188,6 +188,29 @@ async def get_session_results(
     return result
 
 
+@router.get("/events/{slug}/sessions/{short_name}/timing")
+async def get_session_timing(
+    slug: str, short_name: str,
+    repository: EventRepository = Depends(get_repository),
+    jolpica: JolpicaService = Depends(get_jolpica_service),
+    openf1: OpenF1Service = Depends(get_openf1_service),
+) -> dict[str, Any]:
+    event = await get_event(slug, repository, jolpica, openf1)
+    selected = next((item for item in event.sessions if item.shortName == short_name), None)
+    if selected is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    live = get_live_timing_service().snapshot(slug)
+    if live["drivers"] and live["session"]["name"] == selected.name:
+        return live
+    try:
+        result = await openf1.session_timing(event, short_name)
+    except (httpx.HTTPError, KeyError, ValueError):
+        raise HTTPException(status_code=502, detail="Historical timing unavailable") from None
+    if result is None:
+        raise HTTPException(status_code=404, detail="Session records unavailable")
+    return result
+
+
 @router.get("/events/{slug}/sessions/{short_name}/laps")
 async def get_session_laps(
     slug: str,

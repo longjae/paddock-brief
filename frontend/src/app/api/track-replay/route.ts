@@ -29,9 +29,11 @@ export async function GET(request: Request) {
   const season = Number(query.get("season"));
   const country = query.get("country")?.trim() ?? "";
   const raceStart = query.get("raceStart") ?? "";
+  const shortName = query.get("session") ?? "R";
+  const sessionNames: Record<string, string[]> = { FP1: ["Practice 1"], FP2: ["Practice 2"], FP3: ["Practice 3"], SQ: ["Sprint Qualifying", "Sprint Shootout"], S: ["Sprint"], Q: ["Qualifying"], R: ["Race"] };
   const lapNumber = Number(query.get("lap") ?? "1");
   const selectedDriver = Number(query.get("driver") ?? "0");
-  if (!Number.isInteger(season) || season < 2023 || season > new Date().getUTCFullYear() ||
+  if (!sessionNames[shortName] || !Number.isInteger(season) || season < 2023 || season > new Date().getUTCFullYear() ||
       !/^[a-zA-Z .'-]{2,50}$/.test(country) || !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(raceStart) ||
       !Number.isInteger(lapNumber) || lapNumber < 1 || lapNumber > 100 ||
       !Number.isInteger(selectedDriver) || selectedDriver < 0 || selectedDriver > 99) {
@@ -41,12 +43,12 @@ export async function GET(request: Request) {
   try {
     const sessions = await openF1<Session[]>("sessions", new URLSearchParams({ year: String(season), country_name: country }));
     const expectedStart = new Date(`${raceStart.replace(" ", "T")}:00+09:00`).getTime();
-    const session = sessions.filter((item) => item.session_name === "Race" && item.date_end && new Date(item.date_end).getTime() < Date.now())
+    const session = sessions.filter((item) => sessionNames[shortName].includes(item.session_name) && item.date_end && new Date(item.date_end).getTime() < Date.now())
       .sort((a, b) => Math.abs(new Date(a.date_start).getTime() - expectedStart) - Math.abs(new Date(b.date_start).getTime() - expectedStart))[0];
     if (session && Math.abs(new Date(session.date_start).getTime() - expectedStart) > 24 * 60 * 60_000) {
       return Response.json({ available: false, reason: "선택한 GP의 위치 기록을 찾지 못했습니다." });
     }
-    if (!session) return Response.json({ available: false, reason: "종료된 레이스 위치 기록이 없습니다." });
+    if (!session) return Response.json({ available: false, reason: "선택한 세션의 종료된 위치 기록이 없습니다." });
 
     const key = String(session.session_key);
     const [results, drivers] = await Promise.all([
@@ -55,12 +57,14 @@ export async function GET(request: Request) {
     ]);
     const sortedResults = [...results].sort((a, b) => (a.position ?? 999) - (b.position ?? 999));
     const leaderNumber = sortedResults.find((result) => result.position === 1)?.driver_number;
-    if (!leaderNumber) return Response.json({ available: false, reason: "레이스 최종 순위가 아직 없습니다." });
-    const laps = (await openF1<Lap[]>("laps", new URLSearchParams({ session_key: key, driver_number: String(leaderNumber) })))
+    if (!leaderNumber) return Response.json({ available: false, reason: "선택한 세션의 최종 순위가 아직 없습니다." });
+    const focusNumber = sortedResults.some((result) => result.driver_number === selectedDriver) ? selectedDriver : leaderNumber;
+    const referenceNumber = ["R", "S"].includes(shortName) ? leaderNumber : focusNumber;
+    const laps = (await openF1<Lap[]>("laps", new URLSearchParams({ session_key: key, driver_number: String(referenceNumber) })))
       .filter((lap) => Number.isInteger(lap.lap_number) && lap.date_start).sort((a, b) => a.lap_number - b.lap_number);
-    const selectedLap = laps.find((lap) => lap.lap_number === lapNumber);
+    const selectedLap = laps.find((lap) => lap.lap_number === lapNumber) ?? (lapNumber === 1 ? laps[0] : undefined);
     if (!selectedLap) return Response.json({ available: false, reason: "선택한 랩의 위치 기록이 없습니다.", maxLap: laps.at(-1)?.lap_number ?? 0 });
-    const nextLap = laps.find((lap) => lap.lap_number === lapNumber + 1);
+    const nextLap = laps.find((lap) => lap.lap_number === selectedLap.lap_number + 1);
     const start = new Date(selectedLap.date_start).getTime();
     const naturalEnd = nextLap ? new Date(nextLap.date_start).getTime() : start + (selectedLap.lap_duration ?? 120) * 1000;
     const end = Math.min(start + 5 * 60_000, naturalEnd);
@@ -68,7 +72,6 @@ export async function GET(request: Request) {
       return Response.json({ available: false, reason: "선택한 랩의 시각 정보가 없습니다." });
     }
     const windowParams = new URLSearchParams({ session_key: key, "date>": new Date(start).toISOString(), "date<": new Date(end).toISOString() });
-    const focusNumber = sortedResults.some((result) => result.driver_number === selectedDriver) ? selectedDriver : leaderNumber;
     const [locationRows, carRows, pitRows, controlRows] = await Promise.all([
       openF1<Location[]>("location", windowParams),
       openF1<CarData[]>("car_data", new URLSearchParams({ ...Object.fromEntries(windowParams), driver_number: String(focusNumber) })),
@@ -80,7 +83,7 @@ export async function GET(request: Request) {
     if (!orderedLocations.length) return Response.json({ available: false, reason: "선택한 랩의 위치 기록이 부족합니다." });
     const driverByNumber = new Map(drivers.map((driver) => [driver.driver_number, driver]));
     const rankByNumber = new Map(sortedResults.map((result, index) => [result.driver_number, result.position ?? index + 1]));
-    const trace = orderedLocations.filter((row) => row.driver_number === leaderNumber).filter((_, index) => index % 5 === 0)
+    const trace = orderedLocations.filter((row) => row.driver_number === referenceNumber).filter((_, index) => index % 5 === 0)
       .map(({ x, y }) => ({ x, y }));
     const latest = new Map<number, Location>();
     const frames = [];
@@ -115,7 +118,7 @@ export async function GET(request: Request) {
         time: row.date, kind: "control", label: row.flag ? `${row.flag} · ${row.message}` : row.message,
       })),
     ].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
-    return Response.json({ available: true, sessionKey: session.session_key, lap: lapNumber, maxLap: laps.at(-1)?.lap_number ?? lapNumber,
+    return Response.json({ available: true, sessionKey: session.session_key, lap: selectedLap.lap_number, maxLap: laps.at(-1)?.lap_number ?? selectedLap.lap_number,
       leaderNumber, focusNumber, frameSeconds: FRAME_SECONDS, frames, trace, standings, events });
   } catch (error) {
     console.error("OpenF1 track replay failed", error);
