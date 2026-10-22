@@ -7,6 +7,7 @@ import { tyreImagePath } from "@/lib/tyre-image";
 import { TrackReplay } from "@/components/track-replay";
 import { OfficialCircuitMap } from "@/components/official-circuit-map";
 import { LapComparison } from "@/components/lap-comparison";
+import { isBeforeFirstSession } from "@/lib/live-session-state";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 const STATUS_LABEL: Record<LiveTimingSnapshot["connection"], string> = { disabled: "수집기 대기", offline: "오프라인", connecting: "연결 중", reconnecting: "재연결 중", live: "실시간" };
@@ -105,6 +106,7 @@ export function LiveTiming({ event }: { event: EventDetail }) {
     let active = true;
     let lastStreamMessageAt = 0;
     raceControlSession.current = "";
+    setSnapshot(null);
     setRaceControlHistory([]);
     setRadioTranscripts({});
     setOpenRadioPath("");
@@ -131,7 +133,7 @@ export function LiveTiming({ event }: { event: EventDetail }) {
   }, [event.slug]);
 
   const raceSession = event.sessions.find((session) => session.shortName === "R");
-  const upcomingRace = raceSession && new Date(`${raceSession.startsAt.replace(" ", "T")}:00+09:00`).getTime() > Date.now();
+  const upcomingRace = isBeforeFirstSession(event.sessions, clockTime || Date.now(), snapshot?.isLive);
   const raceEnded = raceSession?.status === "done" || (raceSession ? new Date(`${raceSession.startsAt.replace(" ", "T")}:00+09:00`).getTime() < Date.now() - 5 * 60 * 60_000 : false);
   const sessionEnded = raceEnded || snapshot?.session.remaining === "00:00:00";
   const updatedLabel = useMemo(() => !snapshot?.updatedAt ? "아직 수신된 라이브 신호가 없습니다" : `${new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Asia/Seoul" }).format(new Date(snapshot.updatedAt))} KST ${sessionEnded ? "피드 확인" : "갱신"}`, [snapshot?.updatedAt, sessionEnded]);

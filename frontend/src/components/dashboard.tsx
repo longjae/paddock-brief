@@ -11,6 +11,7 @@ import type { GlossaryCategory } from "@/lib/glossary";
 import type { ChampionshipSnapshot, EventDetail, EventSummary, NewsArticle, TeamContent, Video } from "@/lib/types";
 import { LiveTiming } from "@/components/live-timing";
 import { WeekendSessionResults } from "@/components/weekend-session-results";
+import { useDashboardCache } from "@/components/dashboard-cache";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 
@@ -407,13 +408,17 @@ export function Dashboard({
   initialInterviewSection?: InterviewSection;
 }) {
   const router = useRouter();
-  const [event, setEvent] = useState<EventDetail>(demoEvent);
-  const [events, setEvents] = useState<EventSummary[]>([]);
+  const cache = useDashboardCache();
+  const initialCachedEvent = initialEventSlug ? cache.events.get(initialEventSlug) : cache.lastEvent;
+  const [event, setEvent] = useState<EventDetail>(() => initialCachedEvent?.data ?? demoEvent);
+  const [events, setEvents] = useState<EventSummary[]>(() => cache.calendars.get(initialCachedEvent?.data.season ?? Number(initialEventSlug?.slice(0, 4)))?.data ?? []);
   const [seasonLoading, setSeasonLoading] = useState(false);
   const [fiaDocuments, setFiaDocuments] = useState<FiaDocumentResponse | null>(null);
-  const [source, setSource] = useState<"sample" | "api">("sample");
+  const [source, setSource] = useState<"sample" | "api">(initialCachedEvent ? "api" : "sample");
   const [activeVideo, setActiveVideo] = useState(event.videos[0]?.id);
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isInitialLoading, setIsInitialLoading] = useState(!initialCachedEvent);
+  const [eventLoadError, setEventLoadError] = useState(false);
+  const [eventRetry, setEventRetry] = useState(0);
   const [activeTeam, setActiveTeam] = useState<string | null>(null);
   const [paddockView, setPaddockView] = useState<"team" | "driver">("team");
   const [activeOutlet, setActiveOutlet] = useState("all");
@@ -449,6 +454,7 @@ export function Dashboard({
   }, [initialInterviewSection]);
 
   useEffect(() => {
+    if (isInitialLoading || eventLoadError) return;
     const controller = new AbortController();
     setChampionshipLoading(true);
     fetch(`${API_BASE}/standings/${event.season}/${event.round}`, { signal: controller.signal })
@@ -462,22 +468,53 @@ export function Dashboard({
       })
       .finally(() => setChampionshipLoading(false));
     return () => controller.abort();
-  }, [event.round, event.season]);
+  }, [event.round, event.season, isInitialLoading, eventLoadError]);
 
   useEffect(() => {
     const controller = new AbortController();
     let active = true;
-    Promise.all([
-      fetch(`${API_BASE}/events/${initialEventSlug ?? "featured"}`, { signal: controller.signal }),
-      fetch(`${API_BASE}/events?season=${initialEventSlug?.slice(0, 4) ?? new Date().getFullYear()}`, { signal: controller.signal }),
-    ])
-      .then(async ([featuredResponse, eventsResponse]) => {
-        if (!featuredResponse.ok || !eventsResponse.ok) throw new Error("API unavailable");
-        return Promise.all([featuredResponse.json() as Promise<EventDetail>, eventsResponse.json() as Promise<EventSummary[]>]);
-      })
-      .then(([featured, calendar]) => {
+    const cachedEvent = initialEventSlug ? cache.events.get(initialEventSlug) : cache.lastEvent;
+    const season = cachedEvent?.data.season ?? Number(initialEventSlug?.slice(0, 4) ?? new Date().getFullYear());
+    const cachedCalendar = cache.calendars.get(season);
+    setEventLoadError(false);
+    if (cachedEvent) {
+      cache.lastEvent = cachedEvent;
+      setEvent(cachedEvent.data);
+      setSource("api");
+      setIsInitialLoading(false);
+      setSeasonLoading(false);
+      setActiveVideo(cachedEvent.data.videos[0]?.id);
+      setActiveTeam(null);
+      setActiveOutlet("all");
+      setActiveDriver(null);
+      paddockSelectionChangedRef.current = false;
+    } else {
+      setIsInitialLoading(true);
+    }
+    if (cachedCalendar) setEvents(cachedCalendar.data);
+    const now = Date.now();
+    if (cachedEvent && cachedCalendar && now - cachedEvent.savedAt < 60_000 && now - cachedCalendar.savedAt < 300_000) return () => controller.abort();
+    const eventRequest = cachedEvent && now - cachedEvent.savedAt < 60_000 ? Promise.resolve(cachedEvent.data) :
+        fetch(`${API_BASE}/events/${initialEventSlug ?? cachedEvent?.data.slug ?? "featured"}`, { signal: controller.signal }).then((response) => {
+          if (!response.ok) throw new Error("Event unavailable");
+          return response.json() as Promise<EventDetail>;
+        });
+    const calendarRequest = cachedCalendar && now - cachedCalendar.savedAt < 300_000 ? Promise.resolve(cachedCalendar.data) :
+        fetch(`${API_BASE}/events?season=${season}`, { signal: controller.signal }).then((response) => {
+          if (!response.ok) throw new Error("Calendar unavailable");
+          return response.json() as Promise<EventSummary[]>;
+        });
+    calendarRequest.then((calendar) => {
+      if (!active) return;
+      cache.calendars.set(season, { data: calendar, savedAt: Date.now() });
+      setEvents(calendar);
+    }).catch(() => { /* A calendar failure must not block the selected GP. */ });
+    eventRequest.then((featured) => {
+        if (!active) return;
+        const entry = { data: featured, savedAt: Date.now() };
+        cache.events.set(featured.slug, entry);
+        cache.lastEvent = entry;
         setEvent(featured);
-        setEvents(calendar);
         setSeasonLoading(false);
         setActiveVideo(featured.videos[0]?.id);
         setActiveTeam(null);
@@ -486,7 +523,7 @@ export function Dashboard({
         paddockSelectionChangedRef.current = false;
         setSource("api");
       })
-      .catch(() => setSource("sample"))
+      .catch(() => { if (active && !cachedEvent) setEventLoadError(true); })
       .finally(() => {
         if (active) setIsInitialLoading(false);
       });
@@ -494,10 +531,10 @@ export function Dashboard({
       active = false;
       controller.abort();
     };
-  }, [initialEventSlug]);
+  }, [initialEventSlug, cache, eventRetry]);
 
   useEffect(() => {
-    if (activeSection !== "weekend") return;
+    if (activeSection !== "weekend" || isInitialLoading || eventLoadError) return;
     const controller = new AbortController();
     setFiaDocuments(null);
     fetch(`${API_BASE}/events/${event.slug}/fia-documents`, { signal: controller.signal })
@@ -510,7 +547,7 @@ export function Dashboard({
         if (!(error instanceof DOMException && error.name === "AbortError")) setFiaDocuments({ sourceUrl: "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14", documents: [], unavailable: true });
       });
     return () => controller.abort();
-  }, [activeSection, event.slug]);
+  }, [activeSection, event.slug, isInitialLoading, eventLoadError]);
 
   async function selectSeason(season: number) {
     setSeasonLoading(true);
@@ -682,42 +719,36 @@ export function Dashboard({
     });
   }, [glossaryCategory, glossaryQuery]);
 
-  if (isInitialLoading) {
-    return (
-      <main className="initial-loader" aria-busy="true" aria-live="polite">
-        <div className="initial-loader-mark">PB</div>
-        <p>CURRENT RACE WEEKEND</p>
-        <strong>오늘의 그랑프리를 불러오는 중</strong>
-        <span />
-      </main>
-    );
-  }
+  const selectedEventSlug = initialEventSlug ?? (source === "api" ? event.slug : undefined);
+  const needsEvent = activeSection !== "news" && activeSection !== "glossary";
+  const contentReady = !needsEvent || (!isInitialLoading && !eventLoadError && (!initialEventSlug || event.slug === initialEventSlug));
 
   return (
     <main>
       <header className="topbar">
-        <Link className="brand" href={pageHref("weekend", event.slug)} aria-label="Paddock Brief 홈">
+        <Link className="brand" href={pageHref("weekend", selectedEventSlug)} aria-label="Paddock Brief 홈">
           <span className="brand-mark">PB</span>
           <span>Paddock Brief</span>
         </Link>
         <nav aria-label="주요 메뉴">
-          <Link className={activeSection === "weekend" ? "active" : ""} href={pageHref("weekend", event.slug)}>Weekend</Link>
+          <Link className={activeSection === "weekend" ? "active" : ""} href={pageHref("weekend", selectedEventSlug)}>Weekend</Link>
           <Link className={activeSection === "news" ? "active" : ""} href="/news">News</Link>
-          <Link className={activeSection === "interviews" ? "active" : ""} href={pageHref("interviews", event.slug, interviewSection)}>Interviews</Link>
-          <Link className={activeSection === "championship" ? "active" : ""} href={pageHref("championship", event.slug)}>Championship</Link>
-          <Link className={activeSection === "live" ? "active" : ""} href={pageHref("live", event.slug)}>Live</Link>
-          <Link className={activeSection === "glossary" ? "active" : ""} href={pageHref("glossary", event.slug)}>F1 용어집</Link>
+          <Link className={activeSection === "interviews" ? "active" : ""} href={pageHref("interviews", selectedEventSlug, interviewSection)}>Interviews</Link>
+          <Link className={activeSection === "championship" ? "active" : ""} href={pageHref("championship", selectedEventSlug)}>Championship</Link>
+          <Link className={activeSection === "live" ? "active" : ""} href={pageHref("live", selectedEventSlug)}>Live</Link>
+          <Link className={activeSection === "glossary" ? "active" : ""} href={pageHref("glossary", selectedEventSlug)}>F1 용어집</Link>
         </nav>
-        {activeSection !== "news" && <label className="event-select-wrap"><span>시즌</span><select className="season-select" aria-label="시즌 선택" value={event.season} disabled={seasonLoading} onChange={(change) => void selectSeason(Number(change.target.value))}>{Array.from({ length: Math.max(1, new Date().getFullYear() - 2019) }, (_, index) => new Date().getFullYear() - index).map((season) => <option value={season} key={season}>{season}</option>)}</select><select className="event-select" aria-label="그랑프리 선택" value={event.slug} onChange={(change) => router.push(pageHref(activeSection, change.target.value, interviewSection))}>
+        {activeSection !== "news" && source === "api" && <label className="event-select-wrap"><span>시즌</span><select className="season-select" aria-label="시즌 선택" value={event.season} disabled={seasonLoading} onChange={(change) => void selectSeason(Number(change.target.value))}>{Array.from({ length: Math.max(1, new Date().getFullYear() - 2019) }, (_, index) => new Date().getFullYear() - index).map((season) => <option value={season} key={season}>{season}</option>)}</select><select className="event-select" aria-label="그랑프리 선택" value={event.slug} onChange={(change) => router.push(pageHref(activeSection, change.target.value, interviewSection))}>
           {events.length === 0 && <option value={event.slug}>{event.name}</option>}
           {events.map((calendarEvent) => <option key={calendarEvent.slug} value={calendarEvent.slug}>R{calendarEvent.round} · {calendarEvent.name}</option>)}
         </select></label>}
-        <div className={`data-pill ${source}`}>{source === "api" ? "API connected" : "Sample mode"}</div>
+        <div className={`data-pill ${source}`}>{source === "api" ? "API connected" : eventLoadError ? "연결 확인 필요" : "연결 중"}</div>
       </header>
 
       <div className={`app-shell ${activeSection === "live" ? "live-shell" : ""}`}>
         <div className="dashboard-page">
-      {activeSection !== "news" && <section className={`hero ${activeSection === "weekend" ? "hero-weekend" : ""}`} id="top">
+      {!contentReady ? <div className="page-data-status" role="status" aria-busy={!eventLoadError}>{eventLoadError ? <><p>경기 정보를 불러오지 못했습니다.</p><button type="button" onClick={() => setEventRetry((value) => value + 1)}>다시 시도</button></> : <p>경기 정보를 불러오는 중입니다…</p>}</div> : <>
+      {needsEvent && <section className={`hero ${activeSection === "weekend" ? "hero-weekend" : ""}`} id="top">
         <div>
           <p className="eyebrow">ROUND {String(event.round).padStart(2, "0")} · {event.season}</p>
           <h1>{event.name}</h1>
@@ -1011,7 +1042,7 @@ export function Dashboard({
         ) : <p className="empty-state standings-loading">이 라운드의 직전 챔피언십 순위를 아직 불러올 수 없습니다.</p>}
       </section>}
 
-      {activeSection === "live" && <LiveTiming event={event} />}
+      {activeSection === "live" && <LiveTiming key={event.slug} event={event} />}
 
       {activeSection === "glossary" && <section className="section-page glossary-page" id="glossary">
         <div className="page-heading glossary-heading">
@@ -1038,6 +1069,7 @@ export function Dashboard({
         <span>Data adapters: Jolpica · FastF1 · YouTube · FIA · Pirelli</span>
       </footer>
       {selectedContent && <ContentDetailModal item={selectedContent} onClose={() => setSelectedContent(null)} />}
+      </>}
         </div>
       </div>
     </main>
