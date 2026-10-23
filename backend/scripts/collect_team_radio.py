@@ -58,13 +58,35 @@ def radio_captures(stream: str) -> list[dict[str, str]]:
     return sorted(captures.values(), key=lambda item: item["utc"], reverse=True)
 
 
+def started_radio_sessions(sessions: list[dict[str, Any]], now: datetime, meeting_filter: str = "") -> list[dict[str, Any]]:
+    selected = []
+    for session in sessions:
+        if session.get("is_cancelled") or not session.get("session_key") or not session.get("date_start"):
+            continue
+        if meeting_filter.lower() not in str(session.get("meeting_name") or session.get("country_name") or "").lower():
+            continue
+        try:
+            start = datetime.fromisoformat(str(session["date_start"]).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if start.tzinfo is None or start > now:
+            continue
+        if meeting_filter or start >= now - timedelta(days=4):
+            selected.append(session)
+    return selected
+
+
+async def published_radio_rows(client: httpx.AsyncClient, key: int) -> list[dict[str, Any]]:
+    response = await client.get(f"{OPENF1}/team_radio", params={"session_key": key})
+    if response.status_code == 404:
+        LOGGER.info("No published radio clips for session %s yet", key)
+        return []
+    response.raise_for_status()
+    return response.json()
+
+
 def openf1_radio_captures(sessions: list[dict[str, Any]], rows: list[dict[str, Any]], now: datetime, meeting_filter: str = "") -> list[tuple[str, dict[str, str]]]:
-    recent = {
-        session.get("session_key") for session in sessions
-        if (meeting_filter.lower() in str(session.get("meeting_name") or session.get("country_name") or "").lower())
-        and session.get("date_start")
-        and (meeting_filter or now - timedelta(days=4) <= datetime.fromisoformat(session["date_start"]) <= now + timedelta(days=1))
-    }
+    recent = {session["session_key"] for session in started_radio_sessions(sessions, now, meeting_filter)}
     captures = []
     prefix = f"{BASE}/"
     for row in rows:
@@ -108,17 +130,10 @@ async def collect(meeting_filter: str, max_clips: int, dry_run: bool, backfill_s
             sessions_response = await client.get(f"{OPENF1}/sessions", params={"year": datetime.now(UTC).year})
             sessions_response.raise_for_status()
             sessions = sessions_response.json()
-            recent_keys = [
-                session["session_key"] for session in sessions
-                if session.get("date_start") and session.get("session_key")
-                and (meeting_filter.lower() in str(session.get("meeting_name") or session.get("country_name") or "").lower())
-                and (meeting_filter or datetime.now(UTC) - timedelta(days=4) <= datetime.fromisoformat(session["date_start"]) <= datetime.now(UTC) + timedelta(days=1))
-            ]
+            recent_keys = [session["session_key"] for session in started_radio_sessions(sessions, datetime.now(UTC), meeting_filter)]
             rows = []
             for key in recent_keys:
-                response = await client.get(f"{OPENF1}/team_radio", params={"session_key": key})
-                response.raise_for_status()
-                rows.extend(response.json())
+                rows.extend(await published_radio_rows(client, key))
             candidates = openf1_radio_captures(sessions, rows, datetime.now(UTC), meeting_filter)
             paths = list({session_path for session_path, _ in candidates})
     candidates.sort(key=lambda pair: pair[1]["utc"], reverse=True)

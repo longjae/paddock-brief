@@ -2,6 +2,31 @@ from datetime import UTC, datetime
 
 from scripts.collect_team_radio import active_session_paths, openf1_radio_captures, radio_captures
 from app.services.live_timing import radio_speaker_segments
+import asyncio
+import httpx
+import pytest
+from scripts.collect_team_radio import started_radio_sessions, published_radio_rows
+
+
+def test_future_and_cancelled_sessions_are_not_requested_even_with_filter() -> None:
+    now = datetime(2026, 10, 23, 7, tzinfo=UTC)
+    sessions = [
+        {"session_key": 1, "meeting_name": "United States", "date_start": "2026-10-23T17:30:00Z"},
+        {"session_key": 2, "meeting_name": "United States", "date_start": "2026-10-22T17:30:00Z"},
+        {"session_key": 3, "meeting_name": "United States", "date_start": "2026-10-22T17:30:00Z", "is_cancelled": True},
+    ]
+    assert [row["session_key"] for row in started_radio_sessions(sessions, now, "United States")] == [2]
+    assert [row["session_key"] for row in started_radio_sessions(sessions, now)] == [2]
+
+
+def test_missing_radio_is_normal_but_server_errors_still_fail() -> None:
+    async def check():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(lambda request: httpx.Response(404))) as client:
+            assert await published_radio_rows(client, 11389) == []
+        async with httpx.AsyncClient(transport=httpx.MockTransport(lambda request: httpx.Response(500))) as client:
+            with pytest.raises(httpx.HTTPStatusError):
+                await published_radio_rows(client, 11389)
+    asyncio.run(check())
 
 
 def test_diarized_segments_keep_timing_without_guessing_identity() -> None:
