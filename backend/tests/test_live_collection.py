@@ -4,6 +4,16 @@ from datetime import UTC, datetime, timedelta
 from app.services.live_snapshot_store import LiveSnapshotStore
 from scripts.collect_live_timing import active_session
 from scripts.collect_live_timing import feed_active_session
+from scripts.collect_live_timing import relay_session_path
+
+
+def test_relay_rejects_stale_other_gp_and_invalid_session_paths() -> None:
+    now = datetime.now(UTC)
+    state = {"event": "2026-united-states", "isLive": True, "updatedAt": now.isoformat(), "drivers": [{"number": "63"}], "session": {"path": "2026/United_States/Practice_3/"}}
+    assert relay_session_path(state, "2026-united-states", now) == "2026/United_States/Practice_3/"
+    assert relay_session_path(state, "2026-singapore", now) is None
+    assert relay_session_path({**state, "updatedAt": (now - timedelta(minutes=5)).isoformat()}, "2026-united-states", now) is None
+    assert relay_session_path({**state, "session": {"path": "../../other/"}}, "2026-united-states", now) is None
 
 
 def test_public_feed_identifies_fp3_with_austin_timezone() -> None:

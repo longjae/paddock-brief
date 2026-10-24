@@ -552,6 +552,7 @@ class LiveTimingService:
             "delaySeconds": None,
             "session": {
                 "name": session_info.get("Name") or "세션 대기 중",
+                "path": session_info.get("Path") or "",
                 "meeting": meeting_name or None,
                 "remaining": clock.get("Remaining") or "—",
                 "lap": int(lap_count.get("CurrentLap") or 0),

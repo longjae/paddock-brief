@@ -124,7 +124,7 @@ def test_signalr_subscription_result_seeds_full_session_state() -> None:
             "invocationId": "1",
             "result": {
                 "DriverList": {"63": {"Tla": "RUS", "FullName": "George Russell"}},
-                "SessionInfo": {"Name": "Sprint", "Meeting": {"Name": "Singapore Grand Prix"}},
+                "SessionInfo": {"Name": "Sprint", "Path": "2026/Singapore/Sprint/", "Meeting": {"Name": "Singapore Grand Prix"}},
                 "TimingData": {"Lines": {"63": {"Position": "1"}}},
                 "LapCount": {"CurrentLap": 2, "TotalLaps": 19},
             },
@@ -133,7 +133,7 @@ def test_signalr_subscription_result_seeds_full_session_state() -> None:
 
     snapshot = service.snapshot("2026-singapore")
     assert snapshot["isLive"] is True
-    assert snapshot["session"] == {"name": "Sprint", "meeting": "Singapore Grand Prix", "remaining": "—", "lap": 2, "totalLaps": 19}
+    assert snapshot["session"] == {"name": "Sprint", "path": "2026/Singapore/Sprint/", "meeting": "Singapore Grand Prix", "remaining": "—", "lap": 2, "totalLaps": 19}
     assert snapshot["drivers"][0]["code"] == "RUS"
 
 

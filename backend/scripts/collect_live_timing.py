@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import json
+import os
 import sys
 import time
 from datetime import UTC, datetime, timedelta, timezone
@@ -17,11 +19,63 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.config import get_settings
 from app.services.live_snapshot_store import LiveSnapshotStore
-from app.services.live_timing import LiveTimingService
+from app.services.live_timing import LiveTimingService, SESSION_PATH_RE
 from app.services.openf1 import _slug
 
 LOGGER = logging.getLogger(__name__)
 OPENF1_SESSIONS = "https://api.openf1.org/v1/sessions"
+PADDOCK_API = os.environ.get("PADDOCK_API_BASE_URL", "https://paddock-brief-api.vercel.app/api/v1").rstrip("/")
+
+
+def relay_session_path(state: dict[str, Any], slug: str, now: datetime) -> str | None:
+    if state.get("event") != slug or not state.get("isLive") or not state.get("drivers"):
+        return None
+    try:
+        updated = datetime.fromisoformat(str(state.get("updatedAt") or "").replace("Z", "+00:00"))
+        if updated.tzinfo is None or not 0 <= (now - updated).total_seconds() <= 30:
+            return None
+    except ValueError:
+        return None
+    path = str(state.get("session", {}).get("path") or "")
+    return path if SESSION_PATH_RE.fullmatch(path) and ".." not in path else None
+
+
+async def collect_relay(duration_seconds: int, dry_run: bool) -> int:
+    """Persist the application's existing public F1 stream when runner WSS is blocked."""
+    print("Runner F1 connection unavailable; collecting through Paddock Brief live stream")
+    store = LiveSnapshotStore(get_settings())
+    count = 0
+    last_update = None
+    last_saved = 0.0
+    deadline = time.monotonic() + duration_seconds
+    async with httpx.AsyncClient(timeout=35) as client:
+        event_response = await client.get(f"{PADDOCK_API}/events/featured")
+        event_response.raise_for_status()
+        slug = str(event_response.json()["slug"])
+        while time.monotonic() < deadline:
+            async with client.stream("GET", f"{PADDOCK_API}/events/{slug}/live-stream") as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if time.monotonic() >= deadline:
+                        break
+                    if not line.startswith("data: "):
+                        continue
+                    state = json.loads(line[6:])
+                    path = relay_session_path(state, slug, datetime.now(UTC))
+                    if not path:
+                        continue
+                    if dry_run:
+                        print(f"Live relay verified: {slug} / {state['session']['name']} / {len(state['drivers'])} drivers")
+                        return 0
+                    if state["updatedAt"] != last_update and time.monotonic() - last_saved >= 15:
+                        await store.save(slug, path, state)
+                        last_update = state["updatedAt"]
+                        last_saved = time.monotonic()
+                        count += 1
+    print(f"Saved {count} timing snapshots through live relay")
+    if not count:
+        raise RuntimeError("Live relay produced no fresh session snapshots")
+    return count
 
 
 def active_session(rows: list[dict[str, Any]], now: datetime) -> dict[str, Any] | None:
@@ -68,7 +122,7 @@ async def collect(duration_seconds: int, dry_run: bool = False) -> int:
             raise
         if not service.topics.get("SessionInfo"):
             await service.stop()
-            raise RuntimeError("Neither session calendar nor public F1 session info was available")
+            return await collect_relay(duration_seconds, dry_run)
     if not session:
         await service.stop()
         print("No active F1 session; collector idle")
