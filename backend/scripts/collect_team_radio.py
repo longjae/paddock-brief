@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -21,6 +22,7 @@ from app.services.live_timing import LiveTimingService, SESSION_PATH_RE, _items,
 BASE = "https://livetiming.formula1.com/static"
 OPENF1 = "https://api.openf1.org/v1"
 LOGGER = logging.getLogger(__name__)
+PADDOCK_API = os.environ.get("PADDOCK_API_BASE_URL", "https://paddock-brief-api.vercel.app/api/v1").rstrip("/")
 
 
 def active_session_paths(index: dict[str, Any], now: datetime, meeting_filter: str = "") -> list[str]:
@@ -104,6 +106,52 @@ def openf1_radio_captures(sessions: list[dict[str, Any]], rows: list[dict[str, A
     return sorted(unique.values(), key=lambda pair: pair[1]["utc"], reverse=True)
 
 
+async def saved_feed_radio_captures(client: httpx.AsyncClient, meeting_filter: str = "") -> list[tuple[str, dict[str, str]]]:
+    """Use our independently received F1 feed when OpenF1 restricts live access."""
+    if meeting_filter:
+        response = await client.get(f"{PADDOCK_API}/events")
+        response.raise_for_status()
+        events = [event for event in response.json() if meeting_filter.casefold() in str(event.get("name") or "").casefold()]
+    else:
+        response = await client.get(f"{PADDOCK_API}/events/featured")
+        response.raise_for_status()
+        events = [response.json()]
+    candidates = {}
+    for event in events:
+        slug = str(event["slug"])
+        response = await client.get(f"{PADDOCK_API}/events/{slug}/race-state")
+        response.raise_for_status()
+        state = response.json()
+        if state.get("event") != slug:
+            raise ValueError("Saved radio feed does not match the requested GP")
+        for radio in state.get("teamRadio", []):
+            path, session_path = str(radio.get("Path") or ""), str(radio.get("SessionPath") or "")
+            try:
+                team_radio_audio_url(path, session_path)
+            except ValueError:
+                continue
+            candidates[(session_path, path)] = (session_path, {"path": path, "utc": str(radio.get("Utc") or "")})
+    LOGGER.warning("Using saved F1 feed: %s published radio clips; archive backfill will resume when OpenF1 is accessible", len(candidates))
+    return sorted(candidates.values(), key=lambda pair: pair[1]["utc"], reverse=True)
+
+
+async def openf1_or_saved_captures(client: httpx.AsyncClient, now: datetime, meeting_filter: str = "") -> list[tuple[str, dict[str, str]]]:
+    sessions, rows = [], []
+    try:
+        response = await client.get(f"{OPENF1}/sessions", params={"year": now.year})
+        response.raise_for_status()
+        sessions = response.json()
+        for session in started_radio_sessions(sessions, now, meeting_filter):
+            rows.extend(await published_radio_rows(client, session["session_key"]))
+    except httpx.HTTPStatusError as error:
+        if error.response.status_code not in {401, 403}:
+            raise
+        print(f"::warning::OpenF1 access restricted ({error.response.status_code}); using saved F1 radio feed. Historical backfill may be delayed.")
+        saved = await saved_feed_radio_captures(client, meeting_filter)
+        return openf1_radio_captures(sessions, rows, now, meeting_filter) + saved
+    return openf1_radio_captures(sessions, rows, now, meeting_filter)
+
+
 async def collect(meeting_filter: str, max_clips: int, dry_run: bool, backfill_speakers: bool = False) -> int:
     settings = get_settings()
     if not dry_run and (not settings.openai_api_key or not settings.supabase_url or not settings.supabase_secret_key):
@@ -127,15 +175,9 @@ async def collect(meeting_filter: str, max_clips: int, dry_run: bool, backfill_s
                     candidates.append((session_path, capture))
         else:
             LOGGER.warning("F1 archive index returned %s; using OpenF1 radio list", index_response.status_code)
-            sessions_response = await client.get(f"{OPENF1}/sessions", params={"year": datetime.now(UTC).year})
-            sessions_response.raise_for_status()
-            sessions = sessions_response.json()
-            recent_keys = [session["session_key"] for session in started_radio_sessions(sessions, datetime.now(UTC), meeting_filter)]
-            rows = []
-            for key in recent_keys:
-                rows.extend(await published_radio_rows(client, key))
-            candidates = openf1_radio_captures(sessions, rows, datetime.now(UTC), meeting_filter)
+            candidates = await openf1_or_saved_captures(client, datetime.now(UTC), meeting_filter)
             paths = list({session_path for session_path, _ in candidates})
+    candidates = list({(session_path, capture["path"]): (session_path, capture) for session_path, capture in candidates}.values())
     candidates.sort(key=lambda pair: pair[1]["utc"], reverse=True)
     saved = 0
     attempted = 0

@@ -6,6 +6,42 @@ import asyncio
 import httpx
 import pytest
 from scripts.collect_team_radio import started_radio_sessions, published_radio_rows
+from scripts.collect_team_radio import openf1_or_saved_captures
+
+
+@pytest.mark.parametrize("status", [401, 403])
+def test_live_access_restriction_uses_saved_public_f1_feed(status) -> None:
+    def respond(request):
+        if request.url.host == "api.openf1.org":
+            return httpx.Response(status)
+        if request.url.path.endswith("/events/featured"):
+            return httpx.Response(200, json={"slug": "2026-united-states"})
+        assert request.url.path.endswith("/events/2026-united-states/race-state")
+        return httpx.Response(200, json={"event": "2026-united-states", "teamRadio": [
+            {"SessionPath": "2026/United_States/Practice_1/", "Path": "TeamRadio/ANT.mp3", "Utc": "2026-10-23T18:00:00Z"},
+            {"SessionPath": "../../other/", "Path": "TeamRadio/UNSAFE.mp3"},
+        ]})
+    async def check():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+            return await openf1_or_saved_captures(client, datetime(2026, 10, 23, 18, tzinfo=UTC))
+    assert asyncio.run(check()) == [("2026/United_States/Practice_1/", {"path": "TeamRadio/ANT.mp3", "utc": "2026-10-23T18:00:00Z"})]
+
+
+def test_fallback_does_not_mix_another_gp_or_hide_server_failures() -> None:
+    async def check():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(lambda request: httpx.Response(500))) as client:
+            with pytest.raises(httpx.HTTPStatusError):
+                await openf1_or_saved_captures(client, datetime.now(UTC))
+        def wrong_event(request):
+            if request.url.host == "api.openf1.org":
+                return httpx.Response(401)
+            if request.url.path.endswith("/events/featured"):
+                return httpx.Response(200, json={"slug": "2026-united-states"})
+            return httpx.Response(200, json={"event": "2026-singapore", "teamRadio": []})
+        async with httpx.AsyncClient(transport=httpx.MockTransport(wrong_event)) as client:
+            with pytest.raises(ValueError, match="does not match"):
+                await openf1_or_saved_captures(client, datetime.now(UTC))
+    asyncio.run(check())
 
 
 def test_future_and_cancelled_sessions_are_not_requested_even_with_filter() -> None:
