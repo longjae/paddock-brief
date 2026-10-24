@@ -7,7 +7,7 @@ import asyncio
 import logging
 import sys
 import time
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -46,11 +46,31 @@ async def collect(duration_seconds: int, dry_run: bool = False) -> int:
     if not dry_run and not (settings.supabase_url and settings.supabase_secret_key):
         raise RuntimeError("Supabase writer credentials are required")
     now = datetime.now(UTC)
-    async with httpx.AsyncClient(timeout=20) as client:
-        response = await client.get(OPENF1_SESSIONS, params={"year": now.year})
-        response.raise_for_status()
-        session = active_session(response.json(), now)
+    service = LiveTimingService(settings.model_copy(update={"live_timing_enabled": True}))
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await client.get(OPENF1_SESSIONS, params={"year": now.year})
+            response.raise_for_status()
+            session = active_session(response.json(), now)
+    except httpx.HTTPStatusError as error:
+        if error.response.status_code not in {401, 403}:
+            raise
+        print("OpenF1 live access restricted; identifying session from public F1 feed")
+        service.start()
+        for _ in range(15):
+            if service.topics.get("SessionInfo"):
+                break
+            await asyncio.sleep(1)
+        try:
+            session = feed_active_session(service.topics.get("SessionInfo", {}), datetime.now(UTC))
+        except Exception:
+            await service.stop()
+            raise
+        if not service.topics.get("SessionInfo"):
+            await service.stop()
+            raise RuntimeError("Neither session calendar nor public F1 session info was available")
     if not session:
+        await service.stop()
         print("No active F1 session; collector idle")
         return 0
 
@@ -59,9 +79,9 @@ async def collect(duration_seconds: int, dry_run: bool = False) -> int:
     event_slug = _slug(now.year, meeting_name)
     print(f"Collecting {meeting_name} / {session_name} for up to {duration_seconds}s")
     if dry_run:
+        await service.stop()
         return 0
 
-    service = LiveTimingService(settings.model_copy(update={"live_timing_enabled": True}))
     store = LiveSnapshotStore(settings)
     last_saved_update: str | None = None
     count = 0
@@ -90,6 +110,23 @@ async def collect(duration_seconds: int, dry_run: bool = False) -> int:
     if not count:
         raise RuntimeError("Active session produced no saved timing snapshots")
     return count
+
+
+def feed_active_session(info: dict[str, Any], now: datetime) -> dict[str, Any] | None:
+    """Convert venue-local F1 session dates using its explicit GMT offset."""
+    if not info.get("Meeting", {}).get("Name") or not info.get("Name") or not info.get("StartDate"):
+        return None
+    offset = str(info.get("GmtOffset") or "+00:00:00")
+    sign = -1 if offset.startswith("-") else 1
+    hours, minutes, seconds = [int(part) for part in offset.lstrip("+-").split(":")]
+    zone = timezone(sign * timedelta(hours=hours, minutes=minutes, seconds=seconds))
+    def utc_date(value: str) -> str:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return (parsed if parsed.tzinfo else parsed.replace(tzinfo=zone)).astimezone(UTC).isoformat()
+    candidate = {"meeting_name": info["Meeting"]["Name"], "session_name": info["Name"], "date_start": utc_date(info["StartDate"])}
+    if info.get("EndDate"):
+        candidate["date_end"] = utc_date(info["EndDate"])
+    return active_session([candidate], now)
 
 
 if __name__ == "__main__":

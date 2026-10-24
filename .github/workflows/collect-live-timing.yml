@@ -10,6 +10,11 @@ on:
         required: false
         default: false
         type: boolean
+      duration_seconds:
+        description: "수동 점검 수집 시간(1~840초)"
+        required: false
+        default: 780
+        type: number
 
 concurrency:
   group: collect-live-timing
@@ -28,6 +33,7 @@ jobs:
       APP_USE_SAMPLE_DATA: "false"
       LIVE_TIMING_ENABLED: "true"
       DRY_RUN: ${{ inputs.dry_run }}
+      COLLECTION_SECONDS: ${{ inputs.duration_seconds }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -41,5 +47,5 @@ jobs:
           if [ "$DRY_RUN" = "true" ]; then
             uv run python scripts/collect_live_timing.py --dry-run
           else
-            uv run python scripts/collect_live_timing.py
+            uv run python scripts/collect_live_timing.py --duration-seconds "${COLLECTION_SECONDS:-780}"
           fi

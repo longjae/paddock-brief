@@ -224,7 +224,7 @@ export function LiveTiming({ event }: { event: EventDetail }) {
           </div>
         </article>)}
       </div></section>
-      <div className={`live-track-slot ${mobilePanel === "track" ? "mobile-active" : ""}`}>{selectedDataReady && !historyLoading ? <TrackReplay key={`${event.slug}:${replaySession?.shortName}`} event={event} selectedDriverNumber={selectedDriverNumber} liveTrack={snapshot?.track} sessionShortName={replaySession?.shortName} sessionEnded={snapshot?.session.ended} /> : <p className="empty-state">세션 기록 확인 후 트랙 리플레이가 표시됩니다.</p>}</div>
+      <div className={`live-track-slot ${mobilePanel === "track" ? "mobile-active" : ""}`}>{selectedDataReady && !historyLoading ? <TrackReplay key={`${event.slug}:${replaySession?.shortName}`} event={event} selectedDriverNumber={selectedDriverNumber} liveTrack={snapshot?.track} sessionShortName={replaySession?.shortName} sessionEnded={snapshot?.session.ended} liveSessionActive={snapshot?.isLive} /> : <p className="empty-state">세션 기록 확인 후 트랙 리플레이가 표시됩니다.</p>}</div>
     </div>
     <div className="live-feed-grid">
         <section className={`panel live-feed-panel control-panel ${mobilePanel === "control" ? "mobile-active" : ""}`}><header><div><p className="eyebrow">RACE CONTROL</p><h3>레이스 컨트롤</h3></div><span>{raceControlHistory.length} MESSAGES</span></header><div className="live-message-list">{!raceControlHistory.length && <p className="empty-state">공식 메시지를 기다리고 있습니다.</p>}{raceControlHistory.map((message, index) => <article key={`${value(message, "Utc")}-${value(message, "Message")}-${index}`}><time>{value(message, "Utc").slice(11, 19) || "—"}</time><p>{value(message, "Message") || value(message, "Category")}</p></article>)}</div></section>

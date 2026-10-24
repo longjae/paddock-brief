@@ -3,6 +3,33 @@ from datetime import UTC, datetime, timedelta
 
 from app.services.live_snapshot_store import LiveSnapshotStore
 from scripts.collect_live_timing import active_session
+from scripts.collect_live_timing import feed_active_session
+
+
+def test_public_feed_identifies_fp3_with_austin_timezone() -> None:
+    info = {"Meeting": {"Name": "United States Grand Prix"}, "Name": "Practice 3", "StartDate": "2026-10-24T12:30:00", "EndDate": "2026-10-24T13:30:00", "GmtOffset": "-05:00:00"}
+    result = feed_active_session(info, datetime(2026, 10, 24, 17, 45, tzinfo=UTC))
+    assert result["session_name"] == "Practice 3"
+    assert result["date_start"] == "2026-10-24T17:30:00+00:00"
+    assert feed_active_session(info, datetime(2026, 10, 25, tzinfo=UTC)) is None
+
+
+def test_calendar_401_can_identify_session_from_feed_without_openf1(monkeypatch) -> None:
+    import httpx
+    from unittest.mock import AsyncMock, Mock
+    from scripts import collect_live_timing as module
+    from app.core.config import Settings
+    now = datetime.now(UTC)
+    service = Mock()
+    service.topics = {"SessionInfo": {"Meeting": {"Name": "United States Grand Prix"}, "Name": "Practice 3", "StartDate": (now - timedelta(minutes=15)).isoformat(), "EndDate": (now + timedelta(minutes=45)).isoformat(), "GmtOffset": "+00:00:00"}}
+    service.stop = AsyncMock()
+    client = httpx.AsyncClient(transport=httpx.MockTransport(lambda request: httpx.Response(401)))
+    monkeypatch.setattr(module, "get_settings", lambda: Settings(app_use_sample_data=True))
+    monkeypatch.setattr(module, "LiveTimingService", lambda settings: service)
+    monkeypatch.setattr(module.httpx, "AsyncClient", lambda **kwargs: client)
+    assert asyncio.run(module.collect(1, dry_run=True)) == 0
+    service.start.assert_called_once()
+    service.stop.assert_awaited_once()
 
 
 def test_active_session_uses_real_session_window_and_ignores_old_races() -> None:
