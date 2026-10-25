@@ -9,6 +9,48 @@ from scripts.collect_team_radio import started_radio_sessions, published_radio_r
 from scripts.collect_team_radio import openf1_or_saved_captures
 
 
+def test_rate_limit_retries_before_reading_published_clips(monkeypatch) -> None:
+    calls, delays = [], []
+    async def sleep(delay):
+        delays.append(delay)
+    monkeypatch.setattr("scripts.collect_team_radio.asyncio.sleep", sleep)
+    def respond(request):
+        calls.append(request)
+        if len(calls) < 3:
+            return httpx.Response(429, headers={"Retry-After": "3"})
+        return httpx.Response(200, json=[{"session_key": 11391}])
+    async def check():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+            return await published_radio_rows(client, 11391)
+    assert asyncio.run(check()) == [{"session_key": 11391}]
+    assert delays == [3, 3]
+
+
+def test_exhausted_rate_limit_preserves_prior_sessions_and_uses_saved_feed(monkeypatch) -> None:
+    async def sleep(delay):
+        pass
+    monkeypatch.setattr("scripts.collect_team_radio.asyncio.sleep", sleep)
+    calls = []
+    def respond(request):
+        calls.append(str(request.url))
+        if request.url.path == "/v1/sessions":
+            return httpx.Response(200, json=[
+                {"session_key": key, "date_start": "2026-10-23T17:30:00Z"} for key in [1, 2]
+            ])
+        if request.url.path == "/v1/team_radio":
+            if request.url.params["session_key"] == "2":
+                return httpx.Response(429)
+            return httpx.Response(200, json=[{"session_key": 1, "recording_url": "https://livetiming.formula1.com/static/2026/US/Practice_1/TeamRadio/ANT.mp3"}])
+        if request.url.path.endswith("/events/featured"):
+            return httpx.Response(200, json={"slug": "2026-united-states"})
+        return httpx.Response(200, json={"event": "2026-united-states", "teamRadio": []})
+    async def check():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+            return await openf1_or_saved_captures(client, datetime(2026, 10, 24, tzinfo=UTC))
+    assert asyncio.run(check()) == [("2026/US/Practice_1/", {"path": "TeamRadio/ANT.mp3", "utc": ""})]
+    assert sum("session_key=2" in url for url in calls) == 3
+
+
 @pytest.mark.parametrize("status", [401, 403])
 def test_live_access_restriction_uses_saved_public_f1_feed(status) -> None:
     def respond(request):

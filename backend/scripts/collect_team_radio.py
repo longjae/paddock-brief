@@ -78,8 +78,21 @@ def started_radio_sessions(sessions: list[dict[str, Any]], now: datetime, meetin
     return selected
 
 
+async def openf1_get(client: httpx.AsyncClient, resource: str, params: dict[str, Any]) -> httpx.Response:
+    for attempt in range(3):
+        response = await client.get(f"{OPENF1}/{resource}", params=params)
+        if response.status_code != 429 or attempt == 2:
+            return response
+        try:
+            delay = float(response.headers.get("Retry-After", 2 ** (attempt + 1)))
+        except ValueError:
+            delay = 2 ** (attempt + 1)
+        await asyncio.sleep(max(1, min(delay, 30)))
+    raise AssertionError("unreachable")
+
+
 async def published_radio_rows(client: httpx.AsyncClient, key: int) -> list[dict[str, Any]]:
-    response = await client.get(f"{OPENF1}/team_radio", params={"session_key": key})
+    response = await openf1_get(client, "team_radio", {"session_key": key})
     if response.status_code == 404:
         LOGGER.info("No published radio clips for session %s yet", key)
         return []
@@ -138,13 +151,13 @@ async def saved_feed_radio_captures(client: httpx.AsyncClient, meeting_filter: s
 async def openf1_or_saved_captures(client: httpx.AsyncClient, now: datetime, meeting_filter: str = "") -> list[tuple[str, dict[str, str]]]:
     sessions, rows = [], []
     try:
-        response = await client.get(f"{OPENF1}/sessions", params={"year": now.year})
+        response = await openf1_get(client, "sessions", {"year": now.year})
         response.raise_for_status()
         sessions = response.json()
         for session in started_radio_sessions(sessions, now, meeting_filter):
             rows.extend(await published_radio_rows(client, session["session_key"]))
     except httpx.HTTPStatusError as error:
-        if error.response.status_code not in {401, 403}:
+        if error.response.status_code not in {401, 403, 429}:
             raise
         print(f"::warning::OpenF1 access restricted ({error.response.status_code}); using saved F1 radio feed. Historical backfill may be delayed.")
         saved = await saved_feed_radio_captures(client, meeting_filter)
