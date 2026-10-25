@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.config import Settings
 from app.services.content_collector import Formula1ContentCollector, OpenAISummarizer, active_events
+from app.services.calendar_registry import register_missing_active_events
 
 
 def parse_args() -> argparse.Namespace:
@@ -52,6 +53,11 @@ def main() -> int:
         transcript_api_key=settings.transcript_api_key,
     )
     events = list(active_events(database, datetime.now(timezone.utc), args.event_slug, args.force))
+    if not events and not args.dry_run and not args.discovery_only:
+        registered = register_missing_active_events(database, datetime.now(timezone.utc), args.event_slug)
+        if registered:
+            print(json.dumps({"registered_events": registered}))
+            events = list(active_events(database, datetime.now(timezone.utc), args.event_slug, args.force))
     if not events:
         print(json.dumps({"ok": True, "status": "skipped", "reason": "No active race weekend"}, ensure_ascii=False))
         return 0
