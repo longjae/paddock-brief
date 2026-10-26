@@ -548,6 +548,7 @@ class LiveTimingService:
             "event": event_slug,
             "connection": self.connection if self.settings.live_timing_enabled else "disabled",
             "isLive": self.connection == "live" and bool(rows),
+            "captureSource": "live",
             "updatedAt": self.updated_at,
             "delaySeconds": None,
             "session": {

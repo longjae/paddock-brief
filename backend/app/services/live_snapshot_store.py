@@ -56,6 +56,7 @@ class LiveSnapshotStore:
             **state,
             "connection": "offline",
             "isLive": False,
+            "captureSource": "saved",
             "delaySeconds": age,
             "updatedAt": captured_at.isoformat(),
         }

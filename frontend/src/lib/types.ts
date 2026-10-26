@@ -150,6 +150,7 @@ export type LiveTimingSnapshot = {
   archived?: boolean;
   archiveStatus?: "upcoming" | "pending" | "published";
   source?: string;
+  captureSource?: "live" | "saved";
   event: string;
   connection: "disabled" | "offline" | "connecting" | "reconnecting" | "live";
   isLive: boolean;

@@ -11,9 +11,9 @@ on:
         default: false
         type: boolean
       duration_seconds:
-        description: "수동 점검 수집 시간(1~840초)"
+        description: "최대 수집 시간(1~14400초, 실제 세션 종료 10분 뒤까지)"
         required: false
-        default: 780
+        default: 14400
         type: number
 
 concurrency:
@@ -23,7 +23,7 @@ concurrency:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 250
     defaults:
       run:
         working-directory: backend
@@ -47,5 +47,5 @@ jobs:
           if [ "$DRY_RUN" = "true" ]; then
             uv run python scripts/collect_live_timing.py --dry-run
           else
-            uv run python scripts/collect_live_timing.py --duration-seconds "${COLLECTION_SECONDS:-780}"
+            uv run python -u scripts/collect_live_timing.py --duration-seconds "${COLLECTION_SECONDS:-14400}"
           fi

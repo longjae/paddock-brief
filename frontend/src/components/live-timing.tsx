@@ -167,12 +167,22 @@ export function LiveTiming({ event }: { event: EventDetail }) {
   const updatedLabel = useMemo(() => snapshot?.archived ? "선택한 세션의 공개 기록" : !snapshot?.updatedAt ? "아직 수신된 라이브 신호가 없습니다" : `${new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Asia/Seoul" }).format(new Date(snapshot.updatedAt))} KST ${sessionEnded ? "피드 확인" : "갱신"}`, [snapshot?.updatedAt, snapshot?.archived, sessionEnded]);
   const connection = snapshot?.connection ?? (streamState === "retrying" ? "reconnecting" : "connecting");
   const feedAgeSeconds = snapshot?.updatedAt && clockTime ? Math.max(0, Math.floor((clockTime - new Date(snapshot.updatedAt).getTime()) / 1000)) : null;
-  const feedStale = !sessionEnded && snapshot?.isLive && feedAgeSeconds !== null && feedAgeSeconds > 30;
+  const feedStale = !sessionEnded && !snapshot?.archived && !!snapshot?.drivers.length && feedAgeSeconds !== null && feedAgeSeconds > 30;
+  const receivedAt = snapshot?.updatedAt ? new Intl.DateTimeFormat("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Asia/Seoul" }).format(new Date(snapshot.updatedAt)) : "수신 대기";
+  const ageLabel = feedAgeSeconds === null ? "확인 중" : feedAgeSeconds < 60 ? `${feedAgeSeconds}초 전` : feedAgeSeconds < 3600 ? `${Math.floor(feedAgeSeconds / 60)}분 전` : `${Math.floor(feedAgeSeconds / 3600)}시간 전`;
+  const captureLabel = snapshot?.archived ? `${snapshot.source || "OpenF1"} 공개 기록` : snapshot?.captureSource === "saved" || snapshot?.delaySeconds != null ? "백그라운드 수집 · 저장 기록" : snapshot?.drivers.length ? "F1 피드 직접 수신" : "연결 대기";
   const statusLabel = historyLoading ? "세션 기록 확인 중" : historyError ? "기록 연결 확인 필요" : snapshot?.archived ? `${selectedSession} · ${snapshot.archiveStatus === "upcoming" ? "시작 전" : "공개 기록"}` : sessionEnded ? "종료 세션 · 마지막 기록" : feedStale ? "데이터 갱신 지연" : snapshot?.isLive ? "실시간" : snapshot?.delaySeconds !== null && snapshot?.delaySeconds !== undefined && snapshot.drivers.length ? "저장된 마지막 기록" : upcomingRace ? "레이스 예정" : connection === "live" ? "피드 연결 · 세션 대기" : STATUS_LABEL[connection];
   const weather = snapshot?.weather ?? {};
 
   return <section className="section-page live-page" id="live">
     <div className="page-heading live-heading"><div><p className="eyebrow">LIVE TIMING</p><h2>{event.name}<small>{chosenSession?.name || snapshot?.session.name || "세션 연결 중"}</small></h2></div><div className={`live-connection ${sessionEnded ? "ended" : feedStale ? "stale" : snapshot?.isLive ? "connected" : connection}`} role="status"><span /><div><b>{statusLabel}</b><small>{updatedLabel}{feedStale ? ` · ${feedAgeSeconds}초 전` : ""}</small></div></div></div>
+    <div className="live-data-health" aria-label="라이브 데이터 수집 상태">
+      <span><small>데이터 출처</small><b>{captureLabel}</b></span>
+      <span><small>{snapshot?.archived ? "기록 조회" : "마지막 수신"}</small><b>{snapshot?.archived ? "종료된 세션" : `${receivedAt}${snapshot?.updatedAt ? " KST" : ""}`}</b></span>
+      <span><small>기록 경과</small><b>{snapshot?.archived ? "공개 기록 기준" : ageLabel}</b></span>
+      <span><small>위치 / 차량 데이터</small><b>{snapshot?.track?.positions.length || 0}명 / {Object.keys(snapshot?.track?.cars || {}).length}명</b></span>
+      {!sessionEnded && !snapshot?.archived && (feedStale || snapshot?.lastError || streamState === "retrying") && <p role="status">{feedStale ? "새 데이터 수신이 지연되고 있습니다. 마지막 기록을 표시합니다." : "연결을 다시 확인하고 있습니다."} 기록 경과는 마지막 수신 이후의 시간이며, 중계 화면과의 지연을 뜻하지 않습니다.</p>}
+    </div>
     <div className="live-session-toolbar"><label>세션 <select aria-label="라이브 세션 선택" value={selectedSession} onChange={(change) => setSelectedSession(change.target.value)}><option value="auto">자동 · 실시간 / 마지막 수신</option>{event.sessions.map((session) => <option key={session.shortName} value={session.shortName}>{session.shortName} · {session.name}</option>)}</select></label><span>{selectedSession === "auto" ? "현재 라이브 피드를 연결합니다. 지난 세션은 목록에서 선택하세요." : `${chosenSession?.startsAt ?? ""} KST · 세션별 공개 기록`}</span></div>
     {historyLoading && <p className="empty-state" role="status">{selectedSession} 기록을 불러오는 중입니다…</p>}
     {historyError && <div className="session-error"><p>선택한 세션 기록을 불러오지 못했습니다.</p><button type="button" onClick={() => { historyCache.current.delete(`${event.slug}:${selectedSession}`); setHistoryRetry((value) => value + 1); }}>다시 시도</button></div>}
