@@ -215,7 +215,10 @@ async def collect(meeting_filter: str, max_clips: int, dry_run: bool, backfill_s
                 saved += 1
                 print(f"Saved {session_path}{path}: {result.get('status', 'ready')}")
             except (httpx.HTTPError, ValueError) as error:
-                LOGGER.warning("Skipped %s: %s", path, type(error).__name__)
+                if isinstance(error, httpx.HTTPStatusError):
+                    LOGGER.warning("Skipped %s: HTTP %s at %s", path, error.response.status_code, error.request.url.path)
+                else:
+                    LOGGER.warning("Skipped %s: %s", path, type(error).__name__)
         if saved >= max_clips:
             break
     print(f"Sessions: {len(paths)}; published clips: {len(candidates)}; processed: {saved}")

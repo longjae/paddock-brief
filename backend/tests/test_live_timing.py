@@ -215,6 +215,7 @@ def test_new_radio_transcript_is_saved_for_later_requests(monkeypatch) -> None:
             return httpx.Response(200, content=b"audio")
         if request.url.path.endswith("/audio/transcriptions"):
             assert request.content.count(b'gpt-4o-transcribe-diarize') == 1
+            assert b'name="chunking_strategy"\r\n\r\nauto' in request.content
             return httpx.Response(200, json={"text": "Box, box", "segments": [{"start": 0, "end": 1.3, "speaker": "A", "text": "Box, box"}]})
         return httpx.Response(200, json={"output_text": "피트로 들어오세요"})
 

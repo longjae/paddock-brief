@@ -269,7 +269,7 @@ class LiveTimingService:
             transcript_response = await client.post(
                 "https://api.openai.com/v1/audio/transcriptions",
                 headers={"Authorization": f"Bearer {self.settings.openai_api_key}"},
-                data={"model": "gpt-4o-transcribe-diarize", "response_format": "diarized_json"},
+                data={"model": "gpt-4o-transcribe-diarize", "response_format": "diarized_json", "chunking_strategy": "auto"},
                 files={"file": (path.rsplit("/", 1)[-1], audio_response.content, "audio/mpeg")},
             )
             transcript_response.raise_for_status()
