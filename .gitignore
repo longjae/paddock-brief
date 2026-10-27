@@ -1,6 +1,7 @@
 .DS_Store
 .env
 .env.local
+.env.live-worker
 .venv/
 .uv-cache/
 .vercel/
