@@ -64,14 +64,14 @@ MEDIA_FEED_SOURCES = (
 
 
 YOUTUBE_SOURCES = (
-    YouTubeSource("formula1-youtube", "Formula 1", "Formula1", None, "UC_BaxRhNREI_V0DVXjXDALA"),
+    YouTubeSource("formula1-youtube", "Formula 1", "Formula1", None, "UCB_qr75-ydFVKSF9Dmo6izg"),
     YouTubeSource("fia-youtube", "FIA", "fiaofficialvideo", None, "UCFSkxZVj6ki9RrWC8ZcCPrQ"),
-    YouTubeSource("mclaren-youtube", "McLaren Racing", "McLaren", "mclaren", "UC8dxVgZl9u5HeCOXnosCtuQ"),
+    YouTubeSource("mclaren-youtube", "McLaren Racing", "mclarenracing", "mclaren", "UC8dxVgZl9u5HeCOXnosCtuQ"),
     YouTubeSource("mercedes-youtube", "Mercedes-AMG PETRONAS F1 Team", "MercedesAMGF1", "mercedes", "UC7_VGkwCoKfqh1eZEkzey3A"),
 )
 
 YOUTUBE_INTERVIEW_TERMS = (
-    "interview", "reaction", "reacts", "press conference", "media day", "debrief",
+    "interview", "reaction", "reacts", "react after", "press conference", "media day", "debrief",
     "post-race", "post race", "post-qualifying", "post qualifying", "speaks", "q&a",
 )
 
@@ -232,6 +232,50 @@ def youtube_video_matches_event(video: YouTubeVideo, event: dict[str, Any]) -> b
     event_match = any(term in text for term in event_terms)
     interview_match = any(term in text for term in YOUTUBE_INTERVIEW_TERMS)
     return event_match and interview_match
+
+
+def youtube_page_json(page_html: str, variable: str) -> dict[str, Any]:
+    marker = re.search(rf'(?:var\s+{re.escape(variable)}\s*=|window\["{re.escape(variable)}"\]\s*=)\s*', page_html)
+    if not marker:
+        raise ValueError(f"YouTube page has no {variable}")
+    payload, _ = json.JSONDecoder().raw_decode(page_html[marker.end():])
+    if not isinstance(payload, dict):
+        raise ValueError("Invalid YouTube page data")
+    return payload
+
+
+def parse_youtube_channel_uploads(page_html: str, source: YouTubeSource, max_results: int = 25) -> list[YouTubeVideo]:
+    payload = youtube_page_json(page_html, "ytInitialData")
+    channel = payload.get("metadata", {}).get("channelMetadataRenderer", {})
+    if source.channel_id and channel.get("externalId") != source.channel_id:
+        raise ValueError("YouTube channel identity did not match the configured official channel")
+    videos: dict[str, YouTubeVideo] = {}
+    def walk(value: Any) -> None:
+        if len(videos) >= max_results:
+            return
+        if isinstance(value, dict):
+            renderer = value.get("videoRenderer")
+            lockup = value.get("lockupViewModel")
+            video_id, title = "", ""
+            if isinstance(renderer, dict):
+                video_id = str(renderer.get("videoId") or "")
+                text = renderer.get("title") or {}
+                title = str(text.get("simpleText") or "".join(str(run.get("text") or "") for run in text.get("runs", [])))
+            elif isinstance(lockup, dict) and lockup.get("contentType") == "LOCKUP_CONTENT_TYPE_VIDEO":
+                video_id = str(lockup.get("contentId") or "")
+                title = str(lockup.get("metadata", {}).get("lockupMetadataViewModel", {}).get("title", {}).get("content") or "")
+            if YOUTUBE_ID_RE.fullmatch(video_id) and title:
+                videos.setdefault(video_id, YouTubeVideo(video_id, html.unescape(title), "", source.name, None, source))
+                return
+            for item in value.values():
+                walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+    walk(payload.get("contents", {}))
+    if not videos:
+        raise ValueError("Official YouTube channel returned no public upload cards")
+    return list(videos.values())
 
 
 def youtube_video_participants(video: YouTubeVideo, drivers: list[dict[str, Any]]) -> list[str]:
@@ -614,16 +658,21 @@ class Formula1ContentCollector:
         return payload
 
     def discover_youtube_uploads(self, source: YouTubeSource, max_results: int = 25) -> list[YouTubeVideo]:
-        feed_error: Exception | None = None
         if source.channel_id:
             try:
-                return self.discover_youtube_feed_uploads(source, max_results)
-            except Exception as exc:
-                feed_error = exc
-                if not self.youtube_api_key:
-                    raise
-        if not self.youtube_api_key and feed_error:
-            raise feed_error
+                videos = self.discover_youtube_feed_uploads(source, max_results)
+                if videos:
+                    return videos
+            except Exception:
+                pass
+        if self.youtube_api_key:
+            try:
+                return self.discover_youtube_api_uploads(source, max_results)
+            except httpx.HTTPError:
+                pass
+        return parse_youtube_channel_uploads(self.fetch(f"https://www.youtube.com/@{source.handle}/videos"), source, max_results)
+
+    def discover_youtube_api_uploads(self, source: YouTubeSource, max_results: int = 25) -> list[YouTubeVideo]:
         channel_selector = {"id": source.channel_id} if source.channel_id else {"forHandle": source.handle}
         channel_payload = self.youtube_api_get(
             "channels",
@@ -721,8 +770,31 @@ class Formula1ContentCollector:
                         continue
                     if video.video_id in existing_video_ids:
                         continue
-                    inserted += 1
+                    published_at = video.published_at
+                    is_embeddable = True
+                    if not published_at:
+                        # Channel upload cards only contain relative dates. Do not invent a publication date.
+                        try:
+                            player = youtube_page_json(self.fetch(f"https://www.youtube.com/watch?v={video.video_id}"), "ytInitialPlayerResponse")
+                            if player.get("videoDetails", {}).get("videoId") != video.video_id:
+                                raise ValueError("YouTube watch page did not match the requested video")
+                            published_at = player.get("microformat", {}).get("playerMicroformatRenderer", {}).get("publishDate")
+                            is_embeddable = player.get("playabilityStatus", {}).get("playableInEmbed") is True
+                            if not published_at:
+                                continue
+                            published = datetime.fromisoformat(str(published_at).replace("Z", "+00:00"))
+                            if published.tzinfo is None:
+                                published = published.replace(tzinfo=timezone.utc)
+                            event_end = datetime.fromisoformat(str(event["end_at"]).replace("Z", "+00:00"))
+                            if not event_end - timedelta(days=10) <= published <= event_end + timedelta(days=7):
+                                continue
+                            published_at = published.isoformat()
+                        except (httpx.HTTPError, ValueError, KeyError) as exc:
+                            failed += 1
+                            errors.append(f"youtube video {video.video_id}: {type(exc).__name__}")
+                            continue
                     if dry_run:
+                        inserted += 1
                         continue
                     self.database.table("videos").upsert(
                         {
@@ -735,13 +807,14 @@ class Formula1ContentCollector:
                             "channel_name": video.channel_name,
                             "source_url": f"https://www.youtube.com/watch?v={video.video_id}",
                             "participants": youtube_video_participants(video, drivers),
-                            "published_at": video.published_at,
-                            "is_embeddable": True,
+                            "published_at": published_at,
+                            "is_embeddable": is_embeddable,
                             "review_status": review_status,
                         },
                         on_conflict="platform,external_id",
                     ).execute()
                     existing_video_ids.add(video.video_id)
+                    inserted += 1
             except Exception as exc:
                 failed += 1
                 errors.append(f"youtube @{source.handle}: {type(exc).__name__}: {exc}")

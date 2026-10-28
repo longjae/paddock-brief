@@ -25,6 +25,11 @@ on:
         required: false
         default: false
         type: boolean
+      videos_only:
+        description: "공식 영상 목록만 복구 (기사 수집·AI 요약·자막 생성 제외)"
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: collect-f1-content
@@ -54,6 +59,7 @@ jobs:
       - name: Install collector dependencies
         run: uv sync --frozen --group collector
       - name: Collect latest news throughout the season
+        if: ${{ !inputs.videos_only }}
         run: uv run --group collector python scripts/collect_general_news.py
       - name: Collect, classify, summarize, and save
         run: >-
@@ -62,3 +68,4 @@ jobs:
           ${{ inputs.dry_run && '--dry-run' || '' }}
           ${{ inputs.pending && '--pending' || '' }}
           ${{ inputs.discovery_only && '--discovery-only' || '' }}
+          ${{ inputs.videos_only && '--videos-only' || '' }}

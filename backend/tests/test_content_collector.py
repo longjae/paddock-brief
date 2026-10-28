@@ -174,6 +174,87 @@ def test_discovers_youtube_uploads_from_free_channel_feed() -> None:
     assert [(video.video_id, video.channel_name) for video in videos] == [("9iGoWdrKu6o", "FORMULA 1")]
 
 
+def channel_page(source, contents):
+    import json
+    return 'var ytInitialData = ' + json.dumps({"metadata": {"channelMetadataRenderer": {"externalId": source.channel_id}}, "contents": contents}) + ';'
+
+
+def test_rss_failure_recovers_from_verified_official_channel_without_api_key() -> None:
+    source = YOUTUBE_SOURCES[0]
+    def handler(request):
+        if request.url.path.endswith("videos.xml"):
+            return httpx.Response(404)
+        assert request.url.path == "/@Formula1/videos"
+        return httpx.Response(200, text=channel_page(source, [{"lockupViewModel": {
+            "contentType": "LOCKUP_CONTENT_TYPE_VIDEO", "contentId": "SQYus-yb4xE",
+            "metadata": {"lockupMetadataViewModel": {"title": {"content": "Drivers React After The Race | 2026 United States Grand Prix"}}},
+        }}]))
+    collector = Formula1ContentCollector(None, None, "test", http_client=httpx.Client(transport=httpx.MockTransport(handler)))
+    videos = collector.discover_youtube_uploads(source)
+    assert len(videos) == 1
+    assert videos[0].published_at is None
+    assert youtube_video_matches_event(videos[0], {"country": "United States"})
+
+
+def test_channel_parser_supports_old_cards_deduplicates_and_limits_results() -> None:
+    from app.services.content_collector import parse_youtube_channel_uploads
+    source = YOUTUBE_SOURCES[0]
+    card = {"videoRenderer": {"videoId": "SQYus-yb4xE", "title": {"runs": [{"text": "Drivers &amp; teams"}]}}}
+    page = channel_page(source, [card, card, {"videoRenderer": {"videoId": "9iGoWdrKu6o", "title": {"simpleText": "Second interview"}}}])
+    assert [v.title for v in parse_youtube_channel_uploads(page, source)] == ["Drivers & teams", "Second interview"]
+    assert len(parse_youtube_channel_uploads(page, source, 1)) == 1
+
+
+def test_channel_fallback_rejects_wrong_identity_and_non_video_cards() -> None:
+    import pytest
+    from app.services.content_collector import parse_youtube_channel_uploads, YouTubeSource
+    wrong = YouTubeSource("wrong", "Wrong channel", "wrong", channel_id="not-official")
+    with pytest.raises(ValueError, match="identity"):
+        parse_youtube_channel_uploads(channel_page(wrong, {}), YOUTUBE_SOURCES[0])
+    with pytest.raises(ValueError, match="no public upload"):
+        parse_youtube_channel_uploads(channel_page(YOUTUBE_SOURCES[0], [{"lockupViewModel": {"contentType": "LOCKUP_CONTENT_TYPE_PLAYLIST", "contentId": "SQYus-yb4xE"}}]), YOUTUBE_SOURCES[0])
+
+
+def test_youtube_page_parser_never_executes_embedded_javascript() -> None:
+    import pytest
+    from app.services.content_collector import youtube_page_json
+    with pytest.raises(ValueError):
+        youtube_page_json('var ytInitialData = alert("not JSON")', "ytInitialData")
+
+
+def test_video_recovery_checks_dates_skips_duplicates_and_isolates_bad_watch_pages(monkeypatch) -> None:
+    import json
+    import app.services.content_collector as module
+    source = YOUTUBE_SOURCES[0]
+    monkeypatch.setattr(module, "YOUTUBE_SOURCES", (source,))
+    saved = []
+    class Database:
+        def table(self, name): return self
+        def select(self, columns): return self
+        def eq(self, name, value): return self
+        def execute(self): return type("Result", (), {"data": []})()
+        def upsert(self, row, **kwargs):
+            saved.append(row)
+            return self
+    collector = Formula1ContentCollector(Database(), None, "test")
+    collector.ensure_source = lambda *a, **kw: "source"
+    title = "Drivers React After The Race | 2026 United States Grand Prix"
+    videos = [YouTubeVideo(key, title, "", "Formula 1", None, source) for key in ["broken00000", "SQYus-yb4xE", "SQYus-yb4xE", "9iGoWdrKu6o"]]
+    collector.discover_youtube_uploads = lambda source: videos
+    def fetch(url):
+        key = url.split("v=")[1]
+        if key == "broken00000":
+            raise ValueError("invalid watch page")
+        date = "2025-10-25" if key == "9iGoWdrKu6o" else "2026-10-25T19:34:20-07:00"
+        return 'var ytInitialPlayerResponse = '+json.dumps({"videoDetails": {"videoId": key}, "microformat": {"playerMicroformatRenderer": {"publishDate": date}}})+';'
+    collector.fetch = fetch
+    inserted, failed, errors = collector.collect_youtube_videos({"id": "event", "country": "United States", "end_at": "2026-10-25T22:00:00Z"}, [], dry_run=False, review_status="approved")
+    assert (inserted, failed) == (1, 1)
+    assert len(errors) == 1
+    assert [row["external_id"] for row in saved] == ["SQYus-yb4xE"]
+    assert saved[0]["published_at"] == "2026-10-25T19:34:20-07:00"
+
+
 def test_youtube_discovery_rejects_non_interview_race_video() -> None:
     video = YouTubeVideo(
         video_id="SQYus-yb4xE",

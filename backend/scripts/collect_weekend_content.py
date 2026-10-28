@@ -12,7 +12,7 @@ from supabase import create_client
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.config import Settings
-from app.services.content_collector import Formula1ContentCollector, OpenAISummarizer, active_events
+from app.services.content_collector import Formula1ContentCollector, OpenAISummarizer, CollectionResult, active_events
 from app.services.calendar_registry import register_missing_active_events
 
 
@@ -22,10 +22,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--force", action="store_true", help="Collect every configured event.")
     parser.add_argument("--dry-run", action="store_true", help="Fetch and summarize without writing to Supabase.")
     parser.add_argument("--discovery-only", action="store_true", help="Only verify source discovery; does not call OpenAI or write.")
+    parser.add_argument("--videos-only", action="store_true", help="Collect official video metadata without articles, transcription, or AI summaries.")
     parser.add_argument("--pending", action="store_true", help="Store successful summaries as pending instead of approved.")
     parser.add_argument("--max-articles", type=int, default=20)
     parser.add_argument("--refresh-existing", action="store_true", help="Regenerate existing article and video summaries with the current prompt.")
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.videos_only and args.discovery_only:
+        parser.error("Choose either --videos-only or --discovery-only")
+    return args
 
 
 def main() -> int:
@@ -36,7 +40,7 @@ def main() -> int:
         for name, value in {
             "SUPABASE_URL": settings.supabase_url,
             "SUPABASE_SECRET_KEY": settings.supabase_secret_key or (settings.supabase_publishable_key if args.discovery_only else None),
-            "OPENAI_API_KEY": settings.openai_api_key or ("not-required" if args.discovery_only else None),
+            "OPENAI_API_KEY": settings.openai_api_key or ("not-required" if args.discovery_only or args.videos_only else None),
         }.items()
         if not value
     ]
@@ -65,14 +69,21 @@ def main() -> int:
     results = []
     for event in events:
         started_at = datetime.now(timezone.utc)
-        result = collector.collect_event(
-            event,
-            dry_run=args.dry_run,
-            review_status="pending" if args.pending else "approved",
-            max_articles=args.max_articles,
-            discovery_only=args.discovery_only,
-            refresh_existing=args.refresh_existing,
-        )
+        if args.videos_only:
+            inserted, failed, errors = collector.collect_youtube_videos(
+                event, database.table("drivers").select("code,full_name").execute().data,
+                dry_run=args.dry_run, review_status="pending" if args.pending else "approved",
+            )
+            result = CollectionResult(event_slug=event["slug"], inserted=inserted, failed=failed, errors=errors)
+        else:
+            result = collector.collect_event(
+                event,
+                dry_run=args.dry_run,
+                review_status="pending" if args.pending else "approved",
+                max_articles=args.max_articles,
+                discovery_only=args.discovery_only,
+                refresh_existing=args.refresh_existing,
+            )
         results.append(result)
         if not args.discovery_only and not args.dry_run:
             status = "succeeded" if result.failed == 0 else ("partial" if result.inserted else "failed")
