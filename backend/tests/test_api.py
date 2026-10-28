@@ -20,6 +20,18 @@ from app.services.fia_documents import DecisionDocumentParser, event_documents_u
 client = TestClient(app)
 
 
+def test_unverified_video_embed_and_publication_are_not_invented() -> None:
+    event = EventRepository._normalize({
+        "slug": "2026-test", "season": 2026, "round": 1, "short_name": "Test Grand Prix",
+        "country": "Testland", "circuit_name": "Test Circuit", "start_at": "2026-03-01T00:00:00Z",
+        "sessions": [], "interviews": [], "tyre_allocations": {},
+        "videos": [{"id": "video", "category": "공식 인터뷰 영상", "title": "Interview", "platform": "youtube", "external_id": "SQYus-yb4xE", "source_url": "https://www.youtube.com/watch?v=SQYus-yb4xE", "is_embeddable": False, "collected_at": "2026-03-02T09:00:00Z", "published_at": None}],
+    })
+    assert event.videos[0].youtubeId is None
+    assert event.videos[0].publishedAt is None
+    assert event.videos[0].url.endswith("SQYus-yb4xE")
+
+
 def test_fia_document_parser_keeps_decisions_and_penalties() -> None:
     parser = DecisionDocumentParser()
     parser.feed('''<ul><li class="document-row"><a href="/system/files/decision-document/decision.pdf"><div class="title">Doc 12 - Decision - Car 44</div><div class="published">Published on 25.10.26 18:00 CET</div></a></li><li class="document-row"><a href="/system/files/decision-document/classification.pdf"><div class="title">Final classification</div></a></li></ul>''')

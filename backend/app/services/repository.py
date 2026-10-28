@@ -146,7 +146,7 @@ class EventRepository:
                 "detailedSummary": video.get("korean_detail"),
                 "transcriptStatus": video.get("transcript_status") or "pending",
                 "transcriptLanguage": video.get("transcript_language"),
-                "publishedAt": str(video.get("published_at") or video.get("collected_at")) if video.get("published_at") or video.get("collected_at") else None,
+                "publishedAt": str(video["published_at"]) if video.get("published_at") else None,
             }
             for video in video_rows
         ]
