@@ -255,6 +255,29 @@ def test_video_recovery_checks_dates_skips_duplicates_and_isolates_bad_watch_pag
     assert saved[0]["published_at"] == "2026-10-25T19:34:20-07:00"
 
 
+def test_watch_metadata_failure_keeps_explicit_gp_year_video_as_external_link(monkeypatch) -> None:
+    import app.services.content_collector as module
+    source = YOUTUBE_SOURCES[0]
+    monkeypatch.setattr(module, "YOUTUBE_SOURCES", (source,))
+    saved = []
+    class Database:
+        def table(self, name): return self
+        def select(self, columns): return self
+        def eq(self, name, value): return self
+        def execute(self): return type("Result", (), {"data": []})()
+        def upsert(self, row, **kwargs):
+            saved.append(row)
+            return self
+    collector = Formula1ContentCollector(Database(), None, "test")
+    collector.ensure_source = lambda *a, **kw: "source"
+    collector.discover_youtube_uploads = lambda s: [YouTubeVideo("SQYus-yb4xE", "Drivers React After The Race | 2026 United States Grand Prix", "", "F1", None, source)]
+    collector.fetch = lambda url: "watch metadata unavailable"
+    inserted, failed, _ = collector.collect_youtube_videos({"id": "event", "country": "United States", "season": 2026}, [], dry_run=False, review_status="approved")
+    assert (inserted, failed) == (1, 1)
+    assert saved[0]["published_at"] is None
+    assert saved[0]["is_embeddable"] is False
+
+
 def test_youtube_discovery_rejects_non_interview_race_video() -> None:
     video = YouTubeVideo(
         video_id="SQYus-yb4xE",

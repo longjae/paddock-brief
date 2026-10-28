@@ -791,8 +791,14 @@ class Formula1ContentCollector:
                             published_at = published.isoformat()
                         except (httpx.HTTPError, ValueError, KeyError) as exc:
                             failed += 1
-                            errors.append(f"youtube video {video.video_id}: {type(exc).__name__}")
-                            continue
+                            errors.append(f"youtube video {video.video_id}: {type(exc).__name__}: {str(exc)[:160]}")
+                            # Some runner IPs cannot read watch-page metadata. The official
+                            # channel card can still identify a GP when its year is explicit.
+                            # Keep the date unknown and offer the official external link.
+                            if str(event.get("season") or "") not in re.findall(r"\b20\d{2}\b", video.title):
+                                continue
+                            published_at = None
+                            is_embeddable = False
                     if dry_run:
                         inserted += 1
                         continue

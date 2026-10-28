@@ -140,7 +140,7 @@ class EventRepository:
                 "source": (video.get("sources") or {}).get("name", video.get("channel_name", "Official")),
                 "duration": video.get("duration_label") or "—",
                 "url": video["source_url"],
-                "youtubeId": video.get("external_id") if video.get("platform") == "youtube" else None,
+                "youtubeId": video.get("external_id") if video.get("platform") == "youtube" and video.get("is_embeddable") is not False else None,
                 "participants": video.get("participants") or [],
                 "summary": video.get("korean_summary"),
                 "detailedSummary": video.get("korean_detail"),
