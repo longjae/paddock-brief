@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.config import get_settings
 from app.services.live_timing import LiveTimingService, SESSION_PATH_RE, _items, team_radio_audio_url
+from app.services.collection_health import record_collection_health
 
 BASE = "https://livetiming.formula1.com/static"
 OPENF1 = "https://api.openf1.org/v1"
@@ -202,7 +203,8 @@ async def collect(meeting_filter: str, max_clips: int, dry_run: bool, backfill_s
         path = capture["path"]
         prior = existing_by_session[session_path].get(path)
         needs_backfill = bool(backfill_speakers and prior and prior.get("status", "ready") == "ready" and not prior.get("segments"))
-        if prior and not needs_backfill:
+        needs_translation = bool(prior and prior.get("transcript") and not prior.get("translation"))
+        if prior and not needs_backfill and not needs_translation:
             continue
         if dry_run:
             print(f"Would transcribe {session_path}{path}")
@@ -213,7 +215,7 @@ async def collect(meeting_filter: str, max_clips: int, dry_run: bool, backfill_s
                 result = await service.transcribe_team_radio(path, session_path, force=needs_backfill)
                 existing_by_session[session_path][path] = result
                 saved += 1
-                print(f"Saved {session_path}{path}: {result.get('status', 'ready')}")
+                print(f"Saved {session_path}{path}: {result.get('status', 'ready')}; translation={'ready' if result.get('translation') else 'pending' if result.get('transcript') else 'not-applicable'}")
             except (httpx.HTTPError, ValueError) as error:
                 if isinstance(error, httpx.HTTPStatusError):
                     LOGGER.warning("Skipped %s: HTTP %s at %s", path, error.response.status_code, error.request.url.path)
@@ -222,9 +224,27 @@ async def collect(meeting_filter: str, max_clips: int, dry_run: bool, backfill_s
         if saved >= max_clips:
             break
     print(f"Sessions: {len(paths)}; published clips: {len(candidates)}; processed: {saved}")
+    if not dry_run and service.radio_store is not None:
+        rows = [row for items in existing_by_session.values() for row in items.values()]
+        missing = sum(bool(row.get("transcript") and not row.get("translation")) for row in rows)
+        failed = max(0, attempted - saved)
+        status = "failed" if attempted and not saved else "partial" if failed or missing else "skipped" if not candidates else "succeeded"
+        record_collection_health(service.radio_store, "radio", status, processed=saved, failed=failed, unavailable=sum(row.get("status") == "unavailable" for row in rows), translation_missing=missing)
     if attempted and not saved:
         raise RuntimeError("No published radio clips could be transcribed or saved")
     return saved
+
+
+async def run_cli(args: argparse.Namespace) -> int:
+    try:
+        return await collect(args.meeting, args.max_clips, args.dry_run, args.backfill_speakers)
+    except Exception:
+        settings = get_settings()
+        if not args.dry_run and settings.supabase_secret_key:
+            store = LiveTimingService(settings).radio_store
+            if store is not None:
+                await asyncio.to_thread(record_collection_health, store, "radio", "failed", failed=1)
+        raise
 
 
 if __name__ == "__main__":
@@ -234,4 +254,4 @@ if __name__ == "__main__":
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--backfill-speakers", action="store_true")
     args = parser.parse_args()
-    asyncio.run(collect(args.meeting, args.max_clips, args.dry_run, args.backfill_speakers))
+    asyncio.run(run_cli(args))

@@ -13,6 +13,7 @@ from supabase import create_client
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.config import Settings
+from app.services.collection_health import record_collection_health
 from app.services.content_collector import (
     F1_BASE_URL,
     LATEST_CONTENT_URL,
@@ -124,6 +125,8 @@ def main() -> int:
             inserted_by_source[code] = inserted_by_source.get(code, 0) + 1
         except Exception as exc:
             errors.append(f"{url}: {type(exc).__name__}: {exc}")
+    if not args.dry_run and not args.discovery_only:
+        record_collection_health(database, "news", "failed" if not candidates else "partial" if errors else "succeeded", processed=inserted, failed=len(errors))
     print(json.dumps({"ok": bool(candidates), "discovered": len(candidates), "fresh": fresh, "inserted": inserted, "errors": errors}, ensure_ascii=False))
     return 0 if candidates else 1
 

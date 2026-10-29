@@ -10,6 +10,7 @@ import { officialTrackMap } from "@/lib/official-track-maps";
 import type { GlossaryCategory } from "@/lib/glossary";
 import type { ChampionshipSnapshot, EventDetail, EventSummary, NewsArticle, TeamContent, Video } from "@/lib/types";
 import { LiveTiming } from "@/components/live-timing";
+import { CollectionHealth } from "@/components/collection-health";
 import { WeekendSessionResults } from "@/components/weekend-session-results";
 import { useDashboardCache } from "@/components/dashboard-cache";
 
@@ -760,6 +761,7 @@ export function Dashboard({
         </div>
       </section>}
 
+      {["news", "interviews", "live"].includes(activeSection) && <CollectionHealth />}
       {activeSection === "news" && <section className="section-page latest-news-page" id="news">
         <div className="page-heading"><div><p className="eyebrow">LATEST F1 NEWS</p><h1>F1 최신 뉴스</h1><p>그랑프리 일정과 관계없이 확인한 기사를 모았습니다. 발행 시각은 원문 기준입니다.</p></div><span>{latestNews.length} ARTICLES</span></div>
         {newsLoading ? <p className="empty-state">최신 기사를 불러오는 중입니다…</p> : newsError ? <p className="empty-state">기사를 불러오지 못했습니다. 잠시 후 다시 확인해 주세요.</p> : latestNews.length === 0 ? <p className="empty-state">최근 수집한 기사가 없습니다. 다음 수집 후 이곳에 표시됩니다.</p> : <>

@@ -20,6 +20,29 @@ from app.services.fia_documents import DecisionDocumentParser, event_documents_u
 client = TestClient(app)
 
 
+def test_collection_health_exposes_only_sanitized_status() -> None:
+    from types import SimpleNamespace
+    class Query:
+        def table(self, name):
+            self.name = name
+            return self
+        def select(self, columns): return self
+        def execute(self):
+            data = [{"code": str(i)} for i in range(11)] if self.name == "teams" else [{"kind": "videos", "status": "partial", "metadata_unverified_count": 2, "errors": ["private-secret"]}]
+            return SimpleNamespace(data=data)
+    app.dependency_overrides[routes.get_repository] = lambda: SimpleNamespace(client=Query())
+    try:
+        response = client.get("/api/v1/collection-health")
+    finally:
+        app.dependency_overrides.pop(routes.get_repository, None)
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["teamCoverage"]["total"] == 11
+    assert len(payload["teamCoverage"]["configured"]) == 2
+    assert payload["collectors"][1]["metadataUnverified"] == 2
+    assert "private-secret" not in response.text
+
+
 def test_unverified_video_embed_and_publication_are_not_invented() -> None:
     event = EventRepository._normalize({
         "slug": "2026-test", "season": 2026, "round": 1, "short_name": "Test Grand Prix",

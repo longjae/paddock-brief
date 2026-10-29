@@ -243,6 +243,14 @@ class LiveTimingService:
                 )
                 if stored.data:
                     row = stored.data[0]
+                    if row.get("transcript") and not row.get("translation") and self.settings.openai_api_key and self.settings.supabase_secret_key:
+                        try:
+                            translation = await self.translate_team_radio(row["transcript"])
+                            await asyncio.to_thread(lambda: self.radio_store.table("team_radio_transcripts").update({"translation": translation}).eq("session_path", session_path).eq("path", path).execute())
+                            row = {**row, "translation": translation}
+                        except Exception:
+                            # Preserve the saved English and speaker segments; never re-transcribe.
+                            LOGGER.warning("Saved radio translation retry failed for %s", path)
                     return {"audioUrl": audio_url, "transcript": row["transcript"] or None, "translation": row.get("translation"), "language": "en" if row["transcript"] else None, "status": row.get("status", "ready"), "segments": row.get("segments") or []}
             except Exception:
                 LOGGER.warning("Stored team radio transcript unavailable for %s", path, exc_info=True)
@@ -280,34 +288,10 @@ class LiveTimingService:
         if transcript:
             self.radio_transcripts[path] = transcript
             try:
-                async with httpx.AsyncClient(timeout=45) as client:
-                    translation_response = await client.post(
-                        "https://api.openai.com/v1/responses",
-                        headers={"Authorization": f"Bearer {self.settings.openai_api_key}"},
-                        json={
-                            "model": self.settings.openai_summary_model,
-                            "input": (
-                                "다음 Formula 1 팀 라디오를 자연스럽고 간결한 한국어로 번역하세요. "
-                                "고유명사와 F1 용어를 유지하고 번역문만 출력하세요.\n\n" + transcript
-                            ),
-                        },
-                    )
-                    translation_response.raise_for_status()
-                translation_data = translation_response.json()
-                translation_text = translation_data.get("output_text") or next(
-                    (
-                        item.get("text")
-                        for output in translation_data.get("output", [])
-                        for item in output.get("content", [])
-                        if item.get("type") == "output_text"
-                    ),
-                    None,
-                )
-                translation = str(translation_text or "").strip() or None
-                if translation:
-                    self.radio_translations[path] = translation
+                translation = await self.translate_team_radio(transcript)
+                self.radio_translations[path] = translation
             except (httpx.HTTPError, ValueError):
-                LOGGER.warning("Team radio translation failed for %s", path, exc_info=True)
+                LOGGER.warning("Team radio translation failed for %s", path)
         if self.radio_store is not None and self.settings.supabase_secret_key:
             await asyncio.to_thread(
                 lambda: self.radio_store.table("team_radio_transcripts").upsert({
@@ -327,6 +311,26 @@ class LiveTimingService:
             "status": "ready" if transcript else "unavailable",
             "segments": segments,
         }
+
+    async def translate_team_radio(self, transcript: str) -> str:
+        async with httpx.AsyncClient(timeout=45) as client:
+            response = await client.post(
+                "https://api.openai.com/v1/responses",
+                headers={"Authorization": f"Bearer {self.settings.openai_api_key}"},
+                json={"model": self.settings.openai_summary_model, "input": (
+                    "다음 Formula 1 팀 라디오를 자연스럽고 간결한 한국어로 번역하세요. "
+                    "고유명사와 F1 용어를 유지하고 번역문만 출력하세요.\n\n" + transcript
+                )},
+            )
+            response.raise_for_status()
+        payload = response.json()
+        text = payload.get("output_text") or next((
+            item.get("text") for output in payload.get("output", [])
+            for item in output.get("content", []) if item.get("type") == "output_text"
+        ), None)
+        if not str(text or "").strip():
+            raise ValueError("Empty radio translation")
+        return str(text).strip()
 
     async def saved_team_radio_transcripts(self, session_path: str) -> list[dict[str, Any]]:
         if not SESSION_PATH_RE.fullmatch(session_path) or ".." in session_path:

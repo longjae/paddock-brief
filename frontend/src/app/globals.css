@@ -392,6 +392,22 @@ footer { display: flex; justify-content: space-between; padding: 20px 2px 34px; 
 .live-data-health p { grid-column: 1 / -1; margin: 2px 0 0; color: var(--yellow); font-size: 12px; }
 @media (max-width: 700px) { .live-data-health { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @keyframes live-pulse { 50% { opacity: .4; } }
+.collection-health { margin: 12px 0; border: 1px solid var(--line); border-radius: 10px; background: #101313; }
+.collection-health summary { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; min-height: 44px; padding: 10px 14px; cursor: pointer; font-size: 12px; }
+.collection-health summary::after { content: "펼치기 ▾"; margin-left: auto; color: var(--muted); }
+.collection-health[open] summary::after { content: "접기 ▴"; }
+.collection-health summary:focus-visible { outline: 2px solid #90beff; }
+.collection-health summary small, .collection-health-content > p { color: var(--muted); }
+.collection-health-content { padding: 0 14px 12px; }
+.collection-health-content p { margin: 7px 0; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.collection-health-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.collection-health-grid article { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
+.collection-health-grid header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 7px; font-size: 13px; }
+.collection-health-grid dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 10px; font-size: 12px; }
+.collection-health-grid dt, .collection-health-grid small { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.collection-health-grid dd { margin: 0; overflow-wrap: anywhere; }
+.health-warning { color: #ffd15b; }
+@media (max-width: 700px) { .collection-health-grid { grid-template-columns: 1fr; } .collection-health summary small { display: none; } }
 .live-summary-strip { display: grid; grid-template-columns: repeat(4,1fr); margin-bottom: 14px; background: var(--line); border: 1px solid var(--line); border-radius: 13px; overflow: hidden; gap: 1px; }
 .live-summary-strip article { min-width: 0; display: flex; flex-direction: column; gap: 7px; padding: 17px; background: #111313; }.live-summary-strip span { color: var(--muted); font: 8px var(--font-mono); letter-spacing: .08em; }.live-summary-strip b { overflow: hidden; font: 800 16px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }.live-summary-strip b small { color: var(--muted); font-size: 10px; }
 .live-summary-strip .track-2 b { color: var(--yellow); }.live-summary-strip .track-5 b { color: var(--f1-red-bright); }.live-summary-strip .track-4 b, .live-summary-strip .track-6 b { color: #ff8a20; }

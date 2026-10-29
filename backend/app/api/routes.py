@@ -17,10 +17,25 @@ from app.services.repository import EventRepository, get_repository
 from app.services.openf1 import OpenF1Service, get_openf1_service
 from app.services.live_timing import LiveTimingService, get_live_timing_service
 from app.services.live_snapshot_store import get_live_snapshot_store
+from app.services.collection_health import public_health
+from app.services.content_collector import TEAM_EDITORIAL_SOURCES
 from app.services.fia_documents import FIA_DOCUMENTS_URL, fetch_decision_documents
 
 router = APIRouter()
 LOGGER = logging.getLogger(__name__)
+
+
+@router.get("/collection-health")
+def collection_health(repository: EventRepository = Depends(get_repository)) -> dict[str, Any]:
+    rows, total, unavailable = [], None, False
+    if repository.client is not None:
+        try:
+            rows = repository.client.table("collection_health").select("*").execute().data or []
+            total = len(repository.client.table("teams").select("code").execute().data or [])
+        except Exception:
+            unavailable = True
+    return {"collectors": public_health(rows), "unavailable": unavailable,
+            "teamCoverage": {"configured": list({source.team_code: source.name for source in TEAM_EDITORIAL_SOURCES}.values()), "total": total}}
 
 
 async def persisted_live_state(slug: str) -> dict[str, Any] | None:
