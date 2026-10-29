@@ -35,7 +35,7 @@ export function CollectionHealth() {
         const response = await fetch(`${API}/collection-health`, { signal: controller.signal });
         if (!response.ok) throw new Error("Health unavailable");
         const data = await response.json() as Health;
-        if (!Array.isArray(data.collectors)) throw new Error("Invalid health response");
+        if (!Array.isArray(data.collectors) || !data.teamCoverage || !Array.isArray(data.teamCoverage.configured)) throw new Error("Invalid health response");
         if (!controller.signal.aborted) { setHealth(data); setError(data.unavailable); }
       } catch { if (!controller.signal.aborted) setError(true); }
     };

@@ -86,3 +86,19 @@ def test_missing_audio_is_not_falsely_saved_as_silence(monkeypatch) -> None:
             await service.transcribe_team_radio("TeamRadio/TEST.mp3", "2026/test/Race/")
     asyncio.run(check())
     assert service.radio_store.row is None
+
+
+def test_repeated_translation_failure_never_downloads_saved_audio_again(monkeypatch) -> None:
+    paths = []
+    def respond(request):
+        paths.append(request.url.path)
+        return httpx.Response(503)
+    service = service_with_transport(monkeypatch, respond)
+    service.radio_store.row = {"transcript": "Box, box", "translation": None, "status": "ready", "segments": [{"start": 0, "end": 1, "speaker": "A", "text": "Box, box"}]}
+    async def check():
+        for _ in range(2):
+            result = await service.transcribe_team_radio("TeamRadio/TEST.mp3", "2026/test/Race/")
+            assert result["transcript"] == "Box, box" and result["translation"] is None
+            assert len(result["segments"]) == 1
+    asyncio.run(check())
+    assert paths == ["/v1/responses", "/v1/responses"]
