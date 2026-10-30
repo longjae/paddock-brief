@@ -9,6 +9,18 @@ type Results = { status: "upcoming" | "pending" | "published"; drivers: DriverOp
 type Lap = { lap: number; duration: number | null; sectors: Array<number | null>; pitOut: boolean };
 type LapData = { status: "upcoming" | "pending" | "published"; drivers: Array<{ number: number; laps: Lap[] }> };
 
+async function comparisonResponse<T>(response: Response, fallback: string): Promise<T> {
+  if (response.ok) return response.json() as Promise<T>;
+  const payload = await response.json().catch(() => null);
+  const code = payload?.detail?.code;
+  const message = code === "openf1_access_limited"
+    ? "OpenF1 공개 기록의 접근이 제한돼 랩 비교를 사용할 수 없습니다. 실시간 순위는 별도 F1 피드로 계속 표시됩니다. 세션 종료 후 다시 확인해 주세요."
+    : code === "openf1_rate_limited"
+      ? "OpenF1 요청 한도에 도달했습니다. 잠시 뒤 다시 시도해 주세요."
+      : fallback;
+  throw new Error(message);
+}
+
 function defaultSession(event: EventDetail): string {
   const completed = event.sessions.filter((session) => session.status === "done" || Date.now() - new Date(`${session.startsAt.replace(" ", "T")}:00+09:00`).getTime() > 2 * 60 * 60_000);
   return completed.at(-1)?.shortName ?? event.sessions[0]?.shortName ?? "R";
@@ -49,8 +61,8 @@ export function LapComparison({ event, initialSession }: { event: EventDetail; i
   const [driverA, setDriverA] = useState(0);
   const [driverB, setDriverB] = useState(0);
   const [lapData, setLapData] = useState<LapData | null>(null);
-  const [resultsError, setResultsError] = useState(false);
-  const [lapsError, setLapsError] = useState(false);
+  const [resultsError, setResultsError] = useState("");
+  const [lapsError, setLapsError] = useState("");
   const [retry, setRetry] = useState(0);
 
   useEffect(() => {
@@ -64,11 +76,11 @@ export function LapComparison({ event, initialSession }: { event: EventDetail; i
     const controller = new AbortController();
     setResults(null);
     setLapData(null);
-    setResultsError(false);
+    setResultsError("");
     setDriverA(0);
     setDriverB(0);
     fetch(`${API_BASE}/events/${event.slug}/sessions/${selectedSession}/results`, { signal: controller.signal })
-      .then((response) => { if (!response.ok) throw new Error("results unavailable"); return response.json() as Promise<Results>; })
+      .then((response) => comparisonResponse<Results>(response, "세션 결과를 불러오지 못했습니다."))
       .then((payload) => {
         if (controller.signal.aborted) return;
         setResults(payload);
@@ -77,7 +89,7 @@ export function LapComparison({ event, initialSession }: { event: EventDetail; i
           setDriverB(payload.drivers[1]?.number ?? 0);
         }
       })
-      .catch(() => { if (!controller.signal.aborted) setResultsError(true); });
+      .catch((error) => { if (!controller.signal.aborted) setResultsError(error instanceof Error ? error.message : "세션 결과를 불러오지 못했습니다."); });
     return () => controller.abort();
   }, [event.slug, event.sessions, selectedSession, retry]);
 
@@ -85,11 +97,11 @@ export function LapComparison({ event, initialSession }: { event: EventDetail; i
     if (!driverA || !driverB || driverA === driverB) return;
     const controller = new AbortController();
     setLapData(null);
-    setLapsError(false);
+    setLapsError("");
     fetch(`${API_BASE}/events/${event.slug}/sessions/${selectedSession}/laps?driver_a=${driverA}&driver_b=${driverB}`, { signal: controller.signal })
-      .then((response) => { if (!response.ok) throw new Error("laps unavailable"); return response.json() as Promise<LapData>; })
+      .then((response) => comparisonResponse<LapData>(response, "랩 기록을 불러오지 못했습니다."))
       .then((payload) => { if (!controller.signal.aborted) setLapData(payload); })
-      .catch(() => { if (!controller.signal.aborted) setLapsError(true); });
+      .catch((error) => { if (!controller.signal.aborted) setLapsError(error instanceof Error ? error.message : "랩 기록을 불러오지 못했습니다."); });
     return () => controller.abort();
   }, [event.slug, selectedSession, driverA, driverB, retry]);
 
@@ -113,12 +125,12 @@ export function LapComparison({ event, initialSession }: { event: EventDetail; i
       <label>선수 B<select aria-label="두 번째 선수" value={driverB} disabled={!results?.drivers.length} onChange={(change) => setDriverB(Number(change.target.value))}>{results?.drivers.map((driver) => <option key={driver.number} value={driver.number}>{driver.code} · {driver.name}</option>)}</select></label>
       {(resultsError || lapsError) && <button type="button" onClick={() => setRetry((value) => value + 1)}>다시 시도</button>}
     </div>
-    {resultsError && <p className="empty-state">세션 결과를 불러오지 못했습니다.</p>}
+    {resultsError && <p className="empty-state">{resultsError}</p>}
     {!results && !resultsError && <p className="empty-state">비교할 선수와 랩 기록을 불러오는 중입니다.</p>}
     {results?.status === "upcoming" && <p className="empty-state">이 세션은 아직 시작하지 않았습니다. 랩 기록은 세션 후 공개되면 비교할 수 있습니다.</p>}
     {results?.status === "pending" && <p className="empty-state">이 세션의 공개 결과가 아직 없습니다. 기록이 나오면 랩 비교를 사용할 수 있습니다.</p>}
     {results?.status === "published" && driverA === driverB && <p className="empty-state">서로 다른 선수 두 명을 선택하세요.</p>}
-    {results?.status === "published" && driverA !== driverB && lapsError && <p className="empty-state">랩 기록을 불러오지 못했습니다.</p>}
+    {results?.status === "published" && driverA !== driverB && lapsError && <p className="empty-state">{lapsError}</p>}
     {results?.status === "published" && driverA !== driverB && !lapData && !lapsError && <p className="empty-state">랩 기록을 불러오는 중입니다.</p>}
     {lapData?.status === "pending" && <p className="empty-state">이 세션에서 공개된 랩 기록이 없습니다.</p>}
     {lapData?.status === "published" && first.clean.length + second.clean.length === 0 && <p className="empty-state">비교할 수 있는 유효 랩이 없습니다.</p>}

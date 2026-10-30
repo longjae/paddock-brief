@@ -450,3 +450,26 @@ def test_event_drivers_are_normalized() -> None:
     assert event.eventDrivers[0].code == "TST"
     assert event.eventDrivers[0].resultPosition == 1
     assert event.eventDrivers[0].previousSeasonRank == 4
+
+
+def test_lap_comparison_distinguishes_provider_limits_without_leaking_error(monkeypatch):
+    import httpx
+    import pytest
+    from unittest.mock import AsyncMock
+    from types import SimpleNamespace
+    from app.schemas import EventDetail
+    from app.services.sample_data import DEMO_EVENT
+    event = EventDetail.model_validate(DEMO_EVENT)
+    monkeypatch.setattr(routes, "get_event", AsyncMock(return_value=event))
+    for status, code in [(401, "openf1_access_limited"), (403, "openf1_access_limited"), (429, "openf1_rate_limited"), (500, None)]:
+        response = httpx.Response(status, request=httpx.Request("GET", "https://api.openf1.org/v1/sessions?private=secret"), text="private-secret")
+        error = httpx.HTTPStatusError("private-secret", request=response.request, response=response)
+        provider = SimpleNamespace(session_data=AsyncMock(side_effect=error), session_laps=AsyncMock(side_effect=error))
+        calls = [routes.get_session_results(event.slug, "FP1", None, None, provider), routes.get_session_laps(event.slug, "FP1", 16, 1, None, None, provider)]
+        for call in calls:
+            with pytest.raises(HTTPException) as caught:
+                asyncio.run(call)
+            assert caught.value.status_code == (503 if code else 502)
+            if code:
+                assert caught.value.detail == {"code": code}
+            assert "private-secret" not in str(caught.value.detail)

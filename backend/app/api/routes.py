@@ -196,6 +196,12 @@ async def get_session_results(
         raise HTTPException(status_code=404, detail="Session not found")
     try:
         result = await openf1.session_data(event, short_name)
+    except httpx.HTTPStatusError as error:
+        status = error.response.status_code
+        if status in {401, 403, 429}:
+            code = "openf1_rate_limited" if status == 429 else "openf1_access_limited"
+            raise HTTPException(status_code=503, detail={"code": code}) from None
+        raise HTTPException(status_code=502, detail="Session results unavailable") from None
     except (httpx.HTTPError, KeyError, ValueError):
         raise HTTPException(status_code=502, detail="Session results unavailable") from None
     if result is None:
@@ -243,6 +249,12 @@ async def get_session_laps(
         raise HTTPException(status_code=404, detail="Session not found")
     try:
         result = await openf1.session_laps(event, short_name, driver_a, driver_b)
+    except httpx.HTTPStatusError as error:
+        status = error.response.status_code
+        if status in {401, 403, 429}:
+            code = "openf1_rate_limited" if status == 429 else "openf1_access_limited"
+            raise HTTPException(status_code=503, detail={"code": code}) from None
+        raise HTTPException(status_code=502, detail="Lap records unavailable") from None
     except (httpx.HTTPError, KeyError, ValueError):
         raise HTTPException(status_code=502, detail="Lap records unavailable") from None
     if result is None:
