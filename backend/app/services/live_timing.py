@@ -70,13 +70,16 @@ def team_radio_audio_url(path: str, session_path: str) -> str:
 
 
 def _deep_merge(current: Any, update: Any) -> Any:
+    # SignalR sends an initial array followed by sparse, index-keyed patches.
+    if isinstance(current, list) and isinstance(update, dict) and all(str(key).isdigit() for key in update):
+        current = {str(index): item for index, item in enumerate(current)}
     if not isinstance(current, dict) or not isinstance(update, dict):
         return deepcopy(update)
     merged = deepcopy(current)
     for key, value in update.items():
         if value is None:
             merged.pop(key, None)
-        elif isinstance(value, dict) and isinstance(merged.get(key), dict):
+        elif isinstance(value, dict) and isinstance(merged.get(key), (dict, list)):
             merged[key] = _deep_merge(merged[key], value)
         else:
             merged[key] = deepcopy(value)
@@ -95,14 +98,29 @@ def _mini_sectors(sectors: Any) -> list[list[str]]:
     """Keep only the public timing colours; unknown codes remain unavailable."""
     colours = {2048: "yellow", 2049: "green", 2051: "purple", 2064: "pit"}
     result: list[list[str]] = []
-    for sector in _items(sectors)[:3]:
-        segments = _items(sector.get("Segments", {}))
+    for sector in _sector_items(sectors):
+        raw_segments = sector.get("Segments", {})
+        if isinstance(raw_segments, dict):
+            indices = [int(key) for key in raw_segments if str(key).isdigit() and int(key) < 100]
+            segments = [raw_segments.get(str(index), {}) for index in range(max(indices, default=-1) + 1)]
+            segments = [item if isinstance(item, dict) else {} for item in segments]
+        else:
+            segments = [item if isinstance(item, dict) else {} for item in raw_segments] if isinstance(raw_segments, list) else []
         result.append([
             colours.get(int(segment.get("Status") or 0), "unknown")
             if str(segment.get("Status") or 0).isdigit() else "unknown"
             for segment in segments
         ])
     return result
+
+
+def _sector_items(value: Any) -> list[dict[str, Any]]:
+    """Preserve S1/S2/S3 even when only one numbered sector is present."""
+    if isinstance(value, dict):
+        return [value.get(str(index), {}) if isinstance(value.get(str(index)), dict) else {} for index in range(3)]
+    if isinstance(value, list):
+        return [value[index] if index < len(value) and isinstance(value[index], dict) else {} for index in range(3)]
+    return [{}, {}, {}]
 
 
 def _seconds(value: Any) -> float | None:
@@ -458,9 +476,9 @@ class LiveTimingService:
             if isinstance(current, str):
                 current = {"Compound": current}
             stat_line = stats.get(str(number), {}) if isinstance(stats, dict) else {}
-            timing_sectors = _items(line.get("Sectors", {}))
-            best_sectors = _items(stat_line.get("BestSectors", {}))
-            sectors = best_sectors or timing_sectors
+            timing_sectors = _sector_items(line.get("Sectors", {}))
+            best_sectors = _sector_items(stat_line.get("BestSectors", {}))
+            sectors = [best if best.get("Value") else timing for best, timing in zip(best_sectors, timing_sectors)]
             compound = str(current.get("Compound") or stint.get("Compound") or "UNKNOWN").upper()
             rows.append(
                 {

@@ -268,3 +268,25 @@ def test_mini_sector_colours_follow_timing_segments() -> None:
     ]
     assert service.snapshot("2026-test")["drivers"][0]["currentSectors"] == ["30.100", "—", "—"]
     assert service.snapshot("2026-test")["drivers"][0]["pitStops"] == 1
+
+
+def test_sparse_sector_patch_keeps_original_sector_and_segment_numbers() -> None:
+    service = LiveTimingService(Settings(app_use_sample_data=True))
+    service.topics = {
+        "SessionInfo": {"Meeting": {"Name": "Test Grand Prix"}},
+        "TimingData": {"Lines": {"10": {"Position": "1", "Sectors": {
+            "2": {"Value": "26.559", "Segments": {"5": {"Status": 2064}, "4": {"Status": 2049}}},
+        }}}},
+    }
+    snapshot = service.snapshot("2026-test")
+    driver = snapshot["drivers"][0]
+    assert driver["currentSectors"] == ["—", "—", "26.559"]
+    assert driver["miniSectors"] == [[], [], ["unknown"] * 4 + ["green", "pit"]]
+    assert snapshot["fastestSectors"][0]["time"] == "—"
+    assert snapshot["fastestSectors"][2]["time"] == "26.559"
+
+
+def test_sector_array_survives_sparse_signalr_patch() -> None:
+    current = {"Sectors": [{"Value": "27.712"}, {"Value": "32.054"}, {"Value": "20.755"}]}
+    merged = _deep_merge(current, {"Sectors": {"2": {"Value": "26.559"}}})
+    assert merged["Sectors"] == {"0": {"Value": "27.712"}, "1": {"Value": "32.054"}, "2": {"Value": "26.559"}}
