@@ -459,3 +459,20 @@ def test_driver_quotes_and_q_and_a_are_classified_as_interviews() -> None:
         "https://www.formula1.com/en/latest/article/singapore-timetable.abc",
         [],
     )
+
+
+def test_mexico_discovery_uses_official_hub_without_changing_event_id(monkeypatch):
+    from unittest.mock import MagicMock
+    database = MagicMock()
+    database.table.return_value.select.return_value.eq.return_value.execute.return_value.data = []
+    collector = Formula1ContentCollector(database, None, "test")
+    requested = []
+    def fetch(url):
+        requested.append(url)
+        return "<html></html>"
+    monkeypatch.setattr(collector, "fetch", fetch)
+    result = collector.collect_event({"id": "mexico-id", "slug": "2026-mexico-city", "season": 2026}, discovery_only=True)
+    assert "https://www.formula1.com/en/racing/2026/mexico" in requested
+    assert "https://www.formula1.com/en/racing/2026/mexico-city" not in requested
+    assert result.event_slug == "2026-mexico-city"
+    assert result.failed == 0

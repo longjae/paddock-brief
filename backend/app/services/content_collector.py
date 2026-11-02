@@ -972,6 +972,8 @@ class Formula1ContentCollector:
     ) -> CollectionResult:
         result = CollectionResult(event_slug=event["slug"])
         hub_slug = str(event["slug"]).removeprefix(f"{event['season']}-")
+        # Internal event IDs need not match Formula 1's public race URLs.
+        hub_slug = {"mexico-city": "mexico"}.get(hub_slug, hub_slug)
         discovery_pages = [
             f"{F1_BASE_URL}/en/racing/{event['season']}/{hub_slug}",
             LATEST_CONTENT_URL,
