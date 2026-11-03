@@ -473,3 +473,31 @@ def test_lap_comparison_distinguishes_provider_limits_without_leaking_error(monk
             if code:
                 assert caught.value.detail == {"code": code}
             assert "private-secret" not in str(caught.value.detail)
+
+
+def test_missing_final_tyre_data_does_not_block_event_or_interviews(monkeypatch):
+    from unittest.mock import MagicMock
+    row = {
+        "slug": "2026-test", "season": 2026, "round": 1,
+        "short_name": "Test GP", "country": "Testland", "circuit_name": "Test Circuit",
+        "start_at": "2026-03-01T00:00:00Z",
+        "sessions": [{"name": "Race", "short_name": "R", "starts_at": "2026-03-01T06:00:00Z", "status": "done",
+            "race_state_snapshots": [{"captured_at": "2026-03-01T08:00:00Z", "state": {"kind": "final-classification", "drivers": [
+                {"position": 21, "code": "TST", "name": "Test Driver", "team": "Test Team", "colour": "#ffffff", "compound": None, "tyreAge": None, "gap": "DNF"}
+            ]}}]}],
+        "interviews": [{"korean_summary": "인터뷰 내용 유지"}],
+    }
+    event = EventRepository._normalize(row)
+    assert event.drivers[0].compound is None and event.drivers[0].tyreAge is None
+    assert event.summary == ["인터뷰 내용 유지"]
+    repository = MagicMock()
+    repository.get_event.return_value = event
+    app.dependency_overrides[routes.get_repository] = lambda: repository
+    try:
+        response = client.get("/api/v1/events/2026-test")
+        interviews = client.get("/api/v1/events/2026-test/interviews")
+    finally:
+        app.dependency_overrides.pop(routes.get_repository, None)
+    assert response.status_code == 200 and interviews.status_code == 200
+    assert response.json()["drivers"][0]["tyreAge"] is None
+    assert response.json()["summary"] == ["인터뷰 내용 유지"]

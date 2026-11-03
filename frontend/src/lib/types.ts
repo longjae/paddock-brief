@@ -27,8 +27,8 @@ export type DriverState = {
   name: string;
   team: string;
   colour: string;
-  compound: "SOFT" | "MEDIUM" | "HARD" | "INTERMEDIATE" | "WET";
-  tyreAge: number;
+  compound: "SOFT" | "MEDIUM" | "HARD" | "INTERMEDIATE" | "WET" | "UNKNOWN" | null;
+  tyreAge: number | null;
   gap: string;
 };
 

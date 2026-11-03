@@ -39,8 +39,8 @@ class DriverState(BaseModel):
     name: str
     team: str
     colour: str
-    compound: Literal["SOFT", "MEDIUM", "HARD", "INTERMEDIATE", "WET"]
-    tyreAge: int
+    compound: Literal["SOFT", "MEDIUM", "HARD", "INTERMEDIATE", "WET", "UNKNOWN"] | None = None
+    tyreAge: int | None = None
     gap: str
 
 
