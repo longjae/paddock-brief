@@ -476,3 +476,37 @@ def test_mexico_discovery_uses_official_hub_without_changing_event_id(monkeypatc
     assert "https://www.formula1.com/en/racing/2026/mexico-city" not in requested
     assert result.event_slug == "2026-mexico-city"
     assert result.failed == 0
+
+
+def test_official_hub_aliases_cover_mismatched_event_names():
+    from app.services.content_collector import F1_HUB_SLUGS
+    assert F1_HUB_SLUGS["brazilian"] == "brazil"
+    assert F1_HUB_SLUGS["mexico-city"] == "mexico"
+    assert F1_HUB_SLUGS["abu-dhabi"] == "united-arab-emirates"
+    assert F1_HUB_SLUGS["british"] == "great-britain"
+
+
+def test_brazil_content_matches_sao_paulo_without_locality():
+    from app.services.content_collector import SourceDocument
+    event = {"slug": "2026-brazilian", "country": "Brazil", "short_name": "Brazilian Grand Prix", "circuit_name": "Autódromo José Carlos Pace"}
+    document = SourceDocument(url="https://www.formula1.com/en/latest/article/sao-paulo-preview.abc", title="Sao Paulo Thursday press conference", description="", author="F1", published_at=None, paragraphs=[])
+    assert document_matches_event(document, event)
+    assert team_document_matches_event(document, event)
+    assert url_may_match_event(document.url, event)
+    video = YouTubeVideo("abcdefghijk", "Drivers React After Practice | 2026 São Paulo Grand Prix", "", "Formula 1", None, YOUTUBE_SOURCES[0])
+    assert youtube_video_matches_event(video, event)
+    other = SourceDocument(url="https://www.formula1.com/en/latest/article/mexico-preview.abc", title="Mexico City Thursday press conference", description="", author="F1", published_at=None, paragraphs=[])
+    assert not team_document_matches_event(other, event)
+
+
+def test_brazil_collector_requests_official_hub(monkeypatch):
+    from unittest.mock import MagicMock
+    database = MagicMock()
+    database.table.return_value.select.return_value.eq.return_value.execute.return_value.data = []
+    collector = Formula1ContentCollector(database, None, "test")
+    requested = []
+    monkeypatch.setattr(collector, "fetch", lambda url: requested.append(url) or "<html></html>")
+    result = collector.collect_event({"id": "brazil-id", "slug": "2026-brazilian", "season": 2026}, discovery_only=True)
+    assert "https://www.formula1.com/en/racing/2026/brazil" in requested
+    assert not any(url.endswith('/brazilian') for url in requested)
+    assert result.event_slug == "2026-brazilian" and result.failed == 0

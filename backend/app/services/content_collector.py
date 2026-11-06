@@ -20,6 +20,22 @@ from supabase import Client
 
 
 F1_BASE_URL = "https://www.formula1.com"
+# Internal GP identifiers differ from official country URLs.
+F1_HUB_SLUGS = {'abu-dhabi': 'united-arab-emirates',
+ 'australian': 'australia',
+ 'austrian': 'austria',
+ 'barcelona': 'barcelona-catalunya',
+ 'belgian': 'belgium',
+ 'brazilian': 'brazil',
+ 'british': 'great-britain',
+ 'canadian': 'canada',
+ 'chinese': 'china',
+ 'dutch': 'netherlands',
+ 'hungarian': 'hungary',
+ 'italian': 'italy',
+ 'japanese': 'japan',
+ 'mexico-city': 'mexico',
+ 'spanish': 'spain'}
 FIA_BASE_URL = "https://www.fia.com"
 FIA_F1_NEWS_URL = f"{FIA_BASE_URL}/news/formula-1"
 LATEST_CONTENT_URL = f"{F1_BASE_URL}/en/latest"
@@ -220,15 +236,19 @@ def canonicalize_web_url(url: str, base_url: str) -> str:
     return urlunparse(("https", hostname, parsed.path.rstrip("/") or "/", "", "", ""))
 
 
+def _event_terms(event: dict[str, Any]) -> set[str]:
+    terms = {str(event.get(key) or "").lower() for key in ("country", "locality", "circuit_name")}
+    terms.add(str(event.get("short_name") or "").lower().replace(" grand prix", ""))
+    slug = str(event.get("slug") or "").lower()
+    if terms & {"brazil", "brazilian", "sao paulo", "são paulo", "interlagos"} or slug.endswith(("-brazilian", "-brazil", "-sao-paulo")):
+        terms.update({"brazil", "brazilian", "sao paulo", "são paulo", "interlagos"})
+    terms.discard("")
+    return terms
+
+
 def youtube_video_matches_event(video: YouTubeVideo, event: dict[str, Any]) -> bool:
     text = f"{video.title} {video.description}".lower()
-    event_terms = {
-        str(event.get("country") or "").lower(),
-        str(event.get("locality") or "").lower(),
-        str(event.get("circuit_name") or "").lower(),
-        str(event.get("short_name") or "").lower().replace(" grand prix", ""),
-    }
-    event_terms.discard("")
+    event_terms = _event_terms(event)
     event_match = any(term in text for term in event_terms)
     interview_match = any(term in text for term in YOUTUBE_INTERVIEW_TERMS)
     return event_match and interview_match
@@ -350,12 +370,7 @@ def discover_feed_article_urls(feed_xml: str, source: MediaFeedSource, limit: in
 
 def url_may_match_event(url: str, event: dict[str, Any]) -> bool:
     haystack = url.lower()
-    terms = {
-        str(event.get("country", "")).lower(),
-        str(event.get("locality", "")).lower(),
-        str(event.get("circuit_name", "")).lower(),
-        str(event.get("short_name", "")).lower().replace(" grand prix", ""),
-    }
+    terms = _event_terms(event)
     if "malaysia" in terms or "sepang" in terms:
         terms.update({"malaysia", "sepang", "kuala-lumpur"})
     candidates = {
@@ -469,12 +484,7 @@ def event_is_active(event: dict[str, Any], now: datetime) -> bool:
 
 def document_matches_event(document: SourceDocument, event: dict[str, Any]) -> bool:
     haystack = f"{document.title} {document.description} {document.body[:6000]}".lower()
-    terms = {
-        str(event.get("country", "")).lower(),
-        str(event.get("locality", "")).lower(),
-        str(event.get("circuit_name", "")).lower(),
-        str(event.get("short_name", "")).lower().replace(" grand prix", ""),
-    }
+    terms = _event_terms(event)
     if "malaysia" in terms or "sepang" in terms:
         terms.update({"malaysia", "sepang", "kuala lumpur"})
     return any(term and len(term) >= 4 and term in haystack for term in terms)
@@ -483,12 +493,7 @@ def document_matches_event(document: SourceDocument, event: dict[str, Any]) -> b
 def team_document_matches_event(document: SourceDocument, event: dict[str, Any]) -> bool:
     """Avoid assigning a previous-race report merely because it previews the next round."""
     haystack = f"{document.url} {document.title}".lower()
-    terms = {
-        str(event.get("country", "")).lower(),
-        str(event.get("locality", "")).lower(),
-        str(event.get("circuit_name", "")).lower(),
-        str(event.get("short_name", "")).lower().replace(" grand prix", ""),
-    }
+    terms = _event_terms(event)
     if "malaysia" in terms or "sepang" in terms:
         terms.update({"malaysia", "sepang", "kuala lumpur"})
     return any(term and len(term) >= 4 and term in haystack for term in terms)
@@ -973,7 +978,7 @@ class Formula1ContentCollector:
         result = CollectionResult(event_slug=event["slug"])
         hub_slug = str(event["slug"]).removeprefix(f"{event['season']}-")
         # Internal event IDs need not match Formula 1's public race URLs.
-        hub_slug = {"mexico-city": "mexico"}.get(hub_slug, hub_slug)
+        hub_slug = F1_HUB_SLUGS.get(hub_slug, hub_slug)
         discovery_pages = [
             f"{F1_BASE_URL}/en/racing/{event['season']}/{hub_slug}",
             LATEST_CONTENT_URL,
