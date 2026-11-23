@@ -121,3 +121,40 @@ def test_authorized_telemetry_maps_real_fields_without_inventing_samples():
         assert service.track_car_data['16']['speed'] == 300
         assert service.track_car_data['16']['gear'] == 8
     asyncio.run(check())
+
+
+def test_sitemap_articles_rank_by_lastmod_before_random_article_id():
+    from app.services.content_collector import rank_team_article_urls
+    source = next(item for item in TEAM_EDITORIAL_SOURCES if item.team_code == "williams")
+    page = '<urlset><url><loc>https://www.williamsf1.com/articles/zzz/old</loc><lastmod>2020-01-01</lastmod></url><url><loc>https://www.williamsf1.com/articles/aaa/new</loc><lastmod>2026-11-23</lastmod></url></urlset>'
+    assert rank_team_article_urls(page, source)[0].endswith('/aaa/new')
+
+@pytest.mark.parametrize('size', [0, 24 * 1024 * 1024 + 1])
+def test_radio_empty_or_oversized_audio_never_reaches_transcription(monkeypatch, size):
+    import app.services.live_timing as module
+    real_client = httpx.AsyncClient
+    calls = []
+    def handler(request):
+        calls.append(request.method)
+        return httpx.Response(200, content=b'x' * size)
+    monkeypatch.setattr(module.httpx, 'AsyncClient', lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs))
+    service = LiveTimingService(Settings(openai_api_key='test-key', app_use_sample_data=False))
+    async def check():
+        with pytest.raises(ValueError, match='empty or exceeds'):
+            await service.transcribe_team_radio('TeamRadio/TEST.mp3', '2026/test/Race/')
+    asyncio.run(check())
+    assert calls == ['GET']
+
+
+def test_openf1_token_is_only_sent_as_authorization_header(monkeypatch):
+    from app.services.openf1 import OpenF1Service
+    import app.services.openf1 as module
+    real_client = httpx.AsyncClient
+    calls = []
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(200, json=[])
+    monkeypatch.setattr(module.httpx, 'AsyncClient', lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs))
+    asyncio.run(OpenF1Service('test-token')._get('location', session_key=1))
+    assert calls[0].headers['Authorization'] == 'Bearer test-token'
+    assert 'test-token' not in str(calls[0].url)

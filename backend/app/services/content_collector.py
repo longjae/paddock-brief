@@ -354,6 +354,23 @@ def discover_team_article_urls(page_html: str, source: TeamEditorialSource) -> s
     return urls
 
 
+
+def rank_team_article_urls(page: str, source: TeamEditorialSource) -> list[str]:
+    urls = discover_team_article_urls(page, source)
+    modified: dict[str, str] = {}
+    try:
+        root = ElementTree.fromstring(page)
+        for node in root.iter():
+            if node.tag.rsplit("}", 1)[-1] != "url":
+                continue
+            fields = {child.tag.rsplit("}", 1)[-1]: child.text or "" for child in node}
+            if fields.get("loc"):
+                modified[canonicalize_web_url(fields["loc"].strip(), source.base_url)] = fields.get("lastmod", "")
+    except ElementTree.ParseError:
+        pass
+    return sorted(urls, key=lambda url: (modified.get(url, ""), url), reverse=True)
+
+
 def discover_fia_transcript_urls(page_html: str) -> set[str]:
     parser = _LinkParser()
     parser.feed(page_html)
@@ -1013,10 +1030,10 @@ class Formula1ContentCollector:
                 errors.append(f"video {video_id}: {type(exc).__name__}: {exc}")
         return summarized, failed, errors
 
-    def team_article_urls(self, source: TeamEditorialSource) -> set[str]:
+    def team_article_urls(self, source: TeamEditorialSource) -> list[str]:
         checked = datetime.now(timezone.utc).isoformat()
         try:
-            urls = discover_team_article_urls(self.fetch(source.discovery_url), source)
+            urls = rank_team_article_urls(self.fetch(source.discovery_url), source)
             self.team_source_status.append({"code": source.code, "team": source.name, "status": "available" if urls else "empty", "discovered": len(urls), "checkedAt": checked})
             return urls
         except httpx.HTTPStatusError as error:
@@ -1057,8 +1074,8 @@ class Formula1ContentCollector:
         for source in TEAM_EDITORIAL_SOURCES:
             try:
                 discovered = self.team_article_urls(source)
-                relevant = sorted(url for url in discovered if url_may_match_event(url, event))
-                for url in (relevant[:8] if relevant else sorted(discovered, reverse=True)[:2]):
+                relevant = [url for url in discovered if url_may_match_event(url, event)]
+                for url in (relevant[:8] if relevant else discovered[:2]):
                     team_urls[url] = source
             except Exception as exc:
                 result.failed += 1

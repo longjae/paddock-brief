@@ -77,7 +77,7 @@ def main() -> int:
     sources += [(source.code, source.name, source.base_url, False) for source in TEAM_EDITORIAL_SOURCES]
     for source in TEAM_EDITORIAL_SOURCES:
         try:
-            candidates += [(source.code, source.name, source.base_url, False, url) for url in sorted(collector.team_article_urls(source), reverse=True)[:15]]
+            candidates += [(source.code, source.name, source.base_url, False, url) for url in collector.team_article_urls(source)[:15]]
         except Exception as exc:
             errors.append(f"{source.name} discovery: {type(exc).__name__}")
     # Rotate the first source hourly so a small batch cannot permanently starve a team.
@@ -121,7 +121,7 @@ def main() -> int:
                 inserted += 1
                 inserted_by_source[code] = inserted_by_source.get(code, 0) + 1
                 continue
-            source_id = collector.ensure_source(code, name, base_url, "official-team" if code in team_codes else "official-editorial" if official else "media", is_official=official or code in team_codes)
+            source_id = collector.ensure_source(code, name, base_url, "team-media" if code in team_codes else "official-editorial" if official else "media", is_official=official or code in team_codes)
             database.table("general_news").upsert({
                 "source_id": source_id,
                 "source_url": document.url,
