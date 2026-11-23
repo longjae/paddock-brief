@@ -99,7 +99,15 @@ async def get_featured_event(
     openf1: OpenF1Service = Depends(get_openf1_service),
 ) -> EventDetail:
     try:
-        events = await list_events(repository=repository, jolpica=jolpica, openf1=openf1)
+        # Reviewed calendar already contains the GP identity and media window.
+        # Do not put external calendar latency on the first page's critical path.
+        year = datetime.now().year
+        events = sorted(
+            [event for event in repository.list_events() if int(event["season"]) == year],
+            key=lambda event: int(event["round"]),
+        )
+        if not events:
+            events = await list_events(repository=repository, jolpica=jolpica, openf1=openf1)
         now = datetime.now().astimezone()
         opened = [event for event in events if event.get("mediaOpenAt") and datetime.fromisoformat(str(event["mediaOpenAt"])) <= now]
         selected = opened[-1] if opened else events[0]

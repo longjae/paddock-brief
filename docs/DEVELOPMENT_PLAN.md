@@ -192,3 +192,10 @@
 - Run `45129662331` completed SUCCESS. General news inserted 5 stories from 174 discovered candidates. Event content inserted 3, skipped 125; 5 item errors retained: Ferrari/Cadillac discovery 403 and 3 YouTube caption access limitations. Workflow success does not mean every source/caption succeeded.
 - GitHub discovery: 9/11 teams available; Ferrari and Cadillac blocked (local probe had Cadillac available). Operating sourceStatus preserves this environment difference. No access bypass attempted.
 - API latest deployment `dpl_DkCdLbCGDyR1Sfzg2NnGmd6uhFvP` READY, frontend `dpl_9MLfwJi1tZaS1EYhWYDnp32a2A2M` READY. Source ordering follow-up and optional workflow credential wiring pushed in `5053b45` and `e761d4b`.
+
+### Initial page remains connecting — 2026-11-23
+
+- Reproduced `/live` showing only 연결 중 / 경기 정보를 불러오는 중입니다 for an extended period. EventSource was not the initial blocker: the dashboard awaits featured event before mounting live content. API CORS and published JS API address were correct; no runtime error in sampled logs. Direct featured request took 24 seconds.
+- Featured selection previously awaited external merged calendar before returning an already stored GP. Prefer the reviewed current-season calendar and use external fallback only when no stored calendar is available. Added regression test that fails if the stored-calendar path calls external calendar.
+- Dashboard initial event request now aborts after 20 seconds and shows existing connection-error/retry UI instead of staying indefinitely in connecting. Navigation/unmount clears the timer; cached content stays available.
+- 144 backend tests and frontend production build pass. Operating browser verification follows deployment.

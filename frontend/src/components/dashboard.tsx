@@ -495,6 +495,7 @@ export function Dashboard({
     if (cachedCalendar) setEvents(cachedCalendar.data);
     const now = Date.now();
     if (cachedEvent && cachedCalendar && now - cachedEvent.savedAt < 60_000 && now - cachedCalendar.savedAt < 300_000) return () => controller.abort();
+    const requestTimeout = window.setTimeout(() => controller.abort(), 20_000);
     const eventRequest = cachedEvent && now - cachedEvent.savedAt < 60_000 ? Promise.resolve(cachedEvent.data) :
         fetch(`${API_BASE}/events/${initialEventSlug ?? cachedEvent?.data.slug ?? "featured"}`, { signal: controller.signal }).then((response) => {
           if (!response.ok) throw new Error("Event unavailable");
@@ -526,10 +527,12 @@ export function Dashboard({
       })
       .catch(() => { if (active && !cachedEvent) setEventLoadError(true); })
       .finally(() => {
+        window.clearTimeout(requestTimeout);
         if (active) setIsInitialLoading(false);
       });
     return () => {
       active = false;
+      window.clearTimeout(requestTimeout);
       controller.abort();
     };
   }, [initialEventSlug, cache, eventRetry]);

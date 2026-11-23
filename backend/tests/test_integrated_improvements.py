@@ -158,3 +158,17 @@ def test_openf1_token_is_only_sent_as_authorization_header(monkeypatch):
     asyncio.run(OpenF1Service('test-token')._get('location', session_key=1))
     assert calls[0].headers['Authorization'] == 'Bearer test-token'
     assert 'test-token' not in str(calls[0].url)
+
+
+def test_featured_page_does_not_wait_for_external_calendar_when_reviewed_gp_exists():
+    from app.api import routes
+    from app.schemas import EventDetail
+    from app.services.sample_data import DEMO_EVENT
+    event = EventDetail.model_validate(DEMO_EVENT)
+    year = datetime.now().year
+    row = {'slug': event.slug, 'season': year, 'round': 1, 'mediaOpenAt': f'{year}-01-01T00:00:00Z'}
+    repository = SimpleNamespace(list_events=Mock(return_value=[row]), get_event=Mock(return_value=event))
+    jolpica = SimpleNamespace(list_events=AsyncMock(side_effect=AssertionError('external calendar must not block first paint')))
+    result = asyncio.run(routes.get_featured_event(repository, jolpica, Mock()))
+    assert result.slug == event.slug
+    jolpica.list_events.assert_not_awaited()
