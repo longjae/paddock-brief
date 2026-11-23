@@ -100,7 +100,7 @@ def main() -> int:
             unavailable = sum(row.get("transcript_status") == "unavailable" for row in videos)
             summary_failed = any(row.get("transcript_status") == "failed" for row in videos)
             video_status = "failed" if video_errors and not videos else "partial" if video_errors or metadata_unverified or unavailable or summary_failed else "succeeded"
-            record_collection_health(database, "videos", video_status, processed=result.inserted if args.videos_only else None, failed=video_errors, pending=sum(row.get("transcript_status") in {"pending", "failed"} for row in videos), unavailable=unavailable, metadata_unverified=metadata_unverified, event_slug=event["slug"])
+            record_collection_health(database, "videos", video_status, processed=result.inserted if args.videos_only else None, failed=video_errors, pending=sum(row.get("transcript_status") in {"pending", "failed"} for row in videos), unavailable=unavailable, metadata_unverified=metadata_unverified, event_slug=event["slug"], source_status=collector.team_source_status)
             status = "succeeded" if result.failed == 0 else ("partial" if result.inserted or result.updated or result.limited else "failed")
             database.table("content_collection_runs").insert(
                 {

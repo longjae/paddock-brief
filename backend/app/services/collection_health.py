@@ -8,7 +8,7 @@ LOGGER = logging.getLogger(__name__)
 KINDS = ("news", "videos", "radio")
 
 
-def record_collection_health(database: Any, kind: str, status: str, *, processed: int | None = 0, failed: int = 0, unavailable: int = 0, translation_missing: int = 0, pending: int = 0, metadata_unverified: int = 0, event_slug: str | None = None) -> None:
+def record_collection_health(database: Any, kind: str, status: str, *, processed: int | None = 0, failed: int = 0, unavailable: int = 0, translation_missing: int = 0, pending: int = 0, metadata_unverified: int = 0, event_slug: str | None = None, source_status: list[dict[str, Any]] | None = None) -> None:
     if kind not in KINDS or status not in {"succeeded", "partial", "failed", "skipped"}:
         raise ValueError("Invalid collection health category or status")
     now = datetime.now(UTC).isoformat()
@@ -21,9 +21,20 @@ def record_collection_health(database: Any, kind: str, status: str, *, processed
             "processed_count": processed, "failed_count": failed,
             "unavailable_count": unavailable, "translation_missing_count": translation_missing,
             "pending_count": pending, "metadata_unverified_count": metadata_unverified,
+            **({"source_status": source_status} if source_status is not None else {}),
         }, on_conflict="kind").execute()
     except Exception as error:
         LOGGER.warning("Collection health write unavailable (%s)", type(error).__name__)
+
+
+def source_health(value: Any) -> list[dict[str, Any]]:
+    from app.services.content_collector import TEAM_EDITORIAL_SOURCES
+    known = {source.code: source.name for source in TEAM_EDITORIAL_SOURCES}
+    allowed = {"available", "empty", "blocked", "failed"}
+    return [{"code": item["code"], "team": known[item["code"]], "status": item["status"],
+             "discovered": max(0, item.get("discovered", 0)) if isinstance(item.get("discovered", 0), int) else 0,
+             "checkedAt": item.get("checkedAt")} for item in value if isinstance(item, dict)
+            and item.get("code") in known and item.get("status") in allowed] if isinstance(value, list) else []
 
 
 def public_health(rows: list[dict[str, Any]], now: datetime | None = None) -> list[dict[str, Any]]:
@@ -45,6 +56,7 @@ def public_health(rows: list[dict[str, Any]], now: datetime | None = None) -> li
             "processed": row.get("processed_count"), "failed": row.get("failed_count", 0),
             "unavailable": row.get("unavailable_count", 0), "translationMissing": row.get("translation_missing_count", 0),
             "pending": row.get("pending_count", 0), "metadataUnverified": row.get("metadata_unverified_count", 0),
+            "sourceStatus": source_health(row.get("source_status")),
             "ageSeconds": age, "delayed": kind != "videos" and age is not None and age > 6 * 3600 and row.get("status") != "skipped",
         })
     return result

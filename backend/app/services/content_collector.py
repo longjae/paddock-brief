@@ -109,6 +109,15 @@ TEAM_EDITORIAL_SOURCES = (
         discovery_url="https://www.mercedesamgf1.com/news",
         article_path_re=re.compile(r"^/(?:news|reports)/[^/?#]+"),
     ),
+    TeamEditorialSource("scuderia-ferrari", "Scuderia Ferrari", "ferrari", "https://www.ferrari.com", "https://www.ferrari.com/en-EN/formula1/news", re.compile(r"^/en-EN/formula1/articles/[^/?#]+")),
+    TeamEditorialSource("red-bull-racing", "Red Bull Racing", "red-bull", "https://www.redbullracing.com", "https://www.redbullracing.com/int-en", re.compile(r"^/int-en/[^/?#]+")),
+    TeamEditorialSource("aston-martin-f1", "Aston Martin", "aston-martin", "https://www.astonmartinf1.com", "https://www.astonmartinf1.com/en-GB/news", re.compile(r"^/en-GB/news/[^/?#]+/[^/?#]+")),
+    TeamEditorialSource("williams-racing", "Williams", "williams", "https://www.williamsf1.com", "https://www.williamsf1.com/sitemap.xml", re.compile(r"^/articles/[^/?#]+/[^/?#]+")),
+    TeamEditorialSource("alpine-f1", "Alpine", "alpine", "https://www.alpinef1.com", "https://www.alpinef1.com/news", re.compile(r"^/news/[^/?#]+")),
+    TeamEditorialSource("haas-f1", "Haas F1 Team", "haas", "https://www.haasf1team.com", "https://www.haasf1team.com/news", re.compile(r"^/news/[^/?#]+")),
+    TeamEditorialSource("racing-bulls", "Racing Bulls", "racing-bulls", "https://www.visacashapprb.com", "https://www.visacashapprb.com/sitemap.xml", re.compile(r"^/int-en/[^/?#]+")),
+    TeamEditorialSource("audi-f1", "Audi", "audi", "https://www.audif1.com", "https://www.audif1.com/en/news", re.compile(r"^/news/\d{4}/[^/?#]+")),
+    TeamEditorialSource("cadillac-f1", "Cadillac", "cadillac", "https://www.cadillacf1team.com", "https://www.cadillacf1team.com/news", re.compile(r"^/news/[^/?#]+")),
 )
 
 
@@ -328,6 +337,11 @@ def discover_article_urls(page_html: str) -> set[str]:
 def discover_team_article_urls(page_html: str, source: TeamEditorialSource) -> set[str]:
     parser = _LinkParser()
     parser.feed(page_html)
+    if page_html.lstrip().startswith(("<?xml", "<urlset", "<sitemapindex")):
+        try:
+            parser.links.update(node.text.strip() for node in ElementTree.fromstring(page_html).iter() if node.tag.rsplit("}", 1)[-1] == "loc" and node.text)
+        except ElementTree.ParseError:
+            pass
     source_host = (urlparse(source.base_url).hostname or "").removeprefix("www.")
     urls: set[str] = set()
     for link in parser.links:
@@ -420,6 +434,7 @@ def parse_team_article(url: str, page_html: str, source: TeamEditorialSource) ->
             metadata.get("article:published_time")
             or metadata.get("datepublished")
             or metadata.get("date")
+            or structured_publication_date(page_html)
         ),
         paragraphs=paragraphs,
     )
@@ -470,6 +485,18 @@ def parse_youtube_subtitle(payload: str, suffix: str) -> str:
         if cleaned and (not lines or cleaned != lines[-1]):
             lines.append(cleaned)
     return re.sub(r"\s+", " ", " ".join(lines)).strip()
+
+
+def team_article_is_current(document: SourceDocument, event: dict[str, Any]) -> bool:
+    if not document.published_at:
+        return False
+    try:
+        stamp = datetime.fromisoformat(document.published_at.replace("Z", "+00:00"))
+        start = datetime.fromisoformat(str(event["start_at"]).replace("Z", "+00:00"))
+        end = datetime.fromisoformat(str(event["end_at"]).replace("Z", "+00:00"))
+        return stamp.tzinfo is not None and start - timedelta(days=7) <= stamp <= end + timedelta(days=2)
+    except (KeyError, ValueError, TypeError):
+        return False
 
 
 def event_is_active(event: dict[str, Any], now: datetime) -> bool:
@@ -621,6 +648,7 @@ class Formula1ContentCollector:
         http_client: httpx.Client | None = None,
     ) -> None:
         self.database = database
+        self.team_source_status: list[dict[str, Any]] = []
         self.summarizer = summarizer
         self.youtube_api_key = youtube_api_key
         self.transcript_api_key = transcript_api_key
@@ -932,7 +960,7 @@ class Formula1ContentCollector:
         refresh_existing: bool = False,
     ) -> tuple[int, int, list[str]]:
         query = self.database.table("videos").select(
-            "id,external_id,title,source_url,korean_detail,transcript_status"
+            "id,external_id,title,source_url,korean_detail,transcript_status,transcript_retry_after"
         ).eq("event_id", event["id"]).eq("platform", "youtube")
         videos = query.execute().data
         summarized = 0
@@ -941,6 +969,13 @@ class Formula1ContentCollector:
         for video in videos:
             if video.get("korean_detail") and not refresh_existing:
                 continue
+            retry_after = video.get("transcript_retry_after")
+            if retry_after and not refresh_existing:
+                try:
+                    if datetime.fromisoformat(retry_after.replace("Z", "+00:00")) > datetime.now(timezone.utc):
+                        continue
+                except (ValueError, TypeError):
+                    pass
             video_id = str(video.get("external_id") or "")
             if not video_id:
                 continue
@@ -962,6 +997,7 @@ class Formula1ContentCollector:
                             "participants": summary.participants,
                             "transcript_language": language,
                             "transcript_status": "ready",
+                            "transcript_retry_after": None,
                             "summarized_at": datetime.now(timezone.utc).isoformat(),
                         }
                     ).eq("id", video["id"]).execute()
@@ -971,11 +1007,25 @@ class Formula1ContentCollector:
                 transcript_status = "unavailable" if type(exc).__name__ in unavailable_errors else "failed"
                 if not dry_run:
                     self.database.table("videos").update(
-                        {"transcript_status": transcript_status, "summarized_at": datetime.now(timezone.utc).isoformat()}
+                        {"transcript_status": transcript_status, "transcript_retry_after": (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat() if isinstance(exc, TranscriptAccessLimited) else None, "summarized_at": datetime.now(timezone.utc).isoformat()}
                     ).eq("id", video["id"]).execute()
                 failed += 1
                 errors.append(f"video {video_id}: {type(exc).__name__}: {exc}")
         return summarized, failed, errors
+
+    def team_article_urls(self, source: TeamEditorialSource) -> set[str]:
+        checked = datetime.now(timezone.utc).isoformat()
+        try:
+            urls = discover_team_article_urls(self.fetch(source.discovery_url), source)
+            self.team_source_status.append({"code": source.code, "team": source.name, "status": "available" if urls else "empty", "discovered": len(urls), "checkedAt": checked})
+            return urls
+        except httpx.HTTPStatusError as error:
+            status = "blocked" if error.response.status_code in {401, 403, 429} else "failed"
+            self.team_source_status.append({"code": source.code, "team": source.name, "status": status, "discovered": 0, "checkedAt": checked})
+            raise
+        except Exception:
+            self.team_source_status.append({"code": source.code, "team": source.name, "status": "failed", "discovered": 0, "checkedAt": checked})
+            raise
 
     def collect_event(
         self,
@@ -1006,11 +1056,15 @@ class Formula1ContentCollector:
         team_urls: dict[str, TeamEditorialSource] = {}
         for source in TEAM_EDITORIAL_SOURCES:
             try:
-                for url in discover_team_article_urls(self.fetch(source.discovery_url), source):
+                discovered = self.team_article_urls(source)
+                relevant = sorted(url for url in discovered if url_may_match_event(url, event))
+                for url in (relevant[:8] if relevant else sorted(discovered, reverse=True)[:2]):
                     team_urls[url] = source
             except Exception as exc:
                 result.failed += 1
                 result.errors.append(f"discover {source.discovery_url}: {exc}")
+        groups = [[(url, source) for url, source in team_urls.items() if source.code == team.code] for team in TEAM_EDITORIAL_SOURCES]
+        team_urls = dict(item for index in range(max((len(group) for group in groups), default=0)) for group in groups for item in group[index:index + 1])
         fia_urls: set[str] = set()
         try:
             fia_urls.update(discover_fia_transcript_urls(self.fetch(FIA_F1_NEWS_URL)))
@@ -1240,7 +1294,10 @@ class Formula1ContentCollector:
                 result.errors.append(f"article {url}: {exc}")
 
         team_relevant = 0
-        for url, source in sorted(team_urls.items()):
+        team_processed: dict[str, int] = {}
+        for url, source in team_urls.items():
+            if team_processed.get(source.code, 0) >= max(1, (max_articles + len(TEAM_EDITORIAL_SOURCES) - 1) // len(TEAM_EDITORIAL_SOURCES)):
+                continue
             if team_relevant >= max_articles:
                 break
             if canonicalize_web_url(url, url) in existing_urls and not refresh_existing:
@@ -1248,11 +1305,12 @@ class Formula1ContentCollector:
                 continue
             try:
                 document = parse_team_article(url, self.fetch(url), source)
-                if not document_matches_event(document, event):
+                if not team_document_matches_event(document, event) or not team_article_is_current(document, event):
                     result.skipped += 1
                     continue
                 result.relevant += 1
                 team_relevant += 1
+                team_processed[source.code] = team_processed.get(source.code, 0) + 1
                 summary = self.summarizer.summarize(document, teams, drivers)
                 if source.team_code not in summary.team_codes:
                     summary.team_codes.insert(0, source.team_code)

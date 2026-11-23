@@ -60,7 +60,7 @@ def radio_speaker_segments(payload: dict[str, Any]) -> list[dict[str, Any]]:
             continue
         speaker = str(item.get("speaker") or "").strip()
         segments.append({"start": start, "end": end, "speaker": speaker if re.fullmatch(r"[A-Z]", speaker) else None, "text": str(item["text"]).strip()})
-    return segments
+    return sorted(segments, key=lambda item: (item["start"], item["end"]))
 
 
 def team_radio_audio_url(path: str, session_path: str) -> str:
@@ -168,12 +168,29 @@ class LiveTimingService:
         self.radio_store = create_client(settings.supabase_url, settings.supabase_key) if settings.supabase_configured and not settings.app_use_sample_data else None
         self.race_control_history: dict[str, dict[str, Any]] = {}
         self._session_path: str | None = None
+        self._telemetry_task: asyncio.Task | None = None
+        self.telemetry_status = "not-configured" if not settings.openf1_token else "waiting"
+        self.track_source = "public-f1"
+        self._native_telemetry_at: datetime | None = None
         self.track_positions: dict[str, dict[str, Any]] = {}
         self.track_car_data: dict[str, dict[str, Any]] = {}
         self.track_trace: list[dict[str, float]] = []
         self._trace_driver: str | None = None
         self.track_updated_at: str | None = None
         self._task: asyncio.Task[None] | None = None
+
+    def _capture_native_track(self, topic: str, payload: Any) -> None:
+        decoded = _compressed_topic(payload)
+        if not decoded.get("Position" if topic == "Position.z" else "Entries"):
+            return
+        if self.track_source != "public-f1":
+            self.track_positions.clear()
+            self.track_car_data.clear()
+            self.track_trace.clear()
+            self._trace_driver = None
+        self.track_source = "public-f1"
+        self._native_telemetry_at = datetime.now(UTC)
+        self._capture_track(topic, payload)
 
     def _capture_track(self, topic: str, payload: Any) -> None:
         data = _compressed_topic(payload)
@@ -244,6 +261,8 @@ class LiveTimingService:
             self.track_trace.clear()
             self._trace_driver = None
             self.track_updated_at = None
+            self._native_telemetry_at = None
+            self.track_source = "public-f1"
         if path:
             self._session_path = path
 
@@ -292,6 +311,8 @@ class LiveTimingService:
                     self.radio_proxy_preferred = True
                     audio_response = await client.get(proxy_url, params=proxy_params)
             audio_response.raise_for_status()
+            if not audio_response.content or len(audio_response.content) > 24 * 1024 * 1024:
+                raise ValueError("Radio audio is empty or exceeds the transcription size limit")
             transcript_response = await client.post(
                 "https://api.openai.com/v1/audio/transcriptions",
                 headers={"Authorization": f"Bearer {self.settings.openai_api_key}"},
@@ -337,7 +358,7 @@ class LiveTimingService:
                 headers={"Authorization": f"Bearer {self.settings.openai_api_key}"},
                 json={"model": self.settings.openai_summary_model, "input": (
                     "다음 Formula 1 팀 라디오를 자연스럽고 간결한 한국어로 번역하세요. "
-                    "고유명사와 F1 용어를 유지하고 번역문만 출력하세요.\n\n" + transcript
+                    "원문에 없는 사실이나 인명을 추가하지 마세요. 불명확한 부분은 [불명확]으로 유지하고 고유명사와 F1 용어를 보존하세요. 번역문만 출력하세요.\n\n" + transcript
                 )},
             )
             response.raise_for_status()
@@ -366,8 +387,14 @@ class LiveTimingService:
     def start(self) -> None:
         if self.settings.live_timing_enabled and self._task is None:
             self._task = asyncio.create_task(self._run(), name="f1-live-timing")
+            if self.settings.openf1_token:
+                self._telemetry_task = asyncio.create_task(self._run_openf1_telemetry(), name="openf1-live-telemetry")
 
     async def stop(self) -> None:
+        if self._telemetry_task is not None:
+            self._telemetry_task.cancel()
+            await asyncio.gather(self._telemetry_task, return_exceptions=True)
+            self._telemetry_task = None
         if self._task is None:
             return
         self._task.cancel()
@@ -376,6 +403,37 @@ class LiveTimingService:
         except asyncio.CancelledError:
             pass
         self._task = None
+
+    async def _run_openf1_telemetry(self) -> None:
+        from app.services.openf1_telemetry import OpenF1Telemetry
+        provider = OpenF1Telemetry(self.settings.openf1_token or "")
+        while True:
+            delay = 10
+            info = deepcopy(self.topics.get("SessionInfo", {}))
+            path = str(info.get("Path") or "")
+            try:
+                if self.connection == "live" and path:
+                    samples = await provider.sample(info, datetime.now(UTC))
+                    if samples and path == self._session_path:
+                        positions, cars = samples
+                        # Native public-feed telemetry takes priority when it exists.
+                        if (not self._native_telemetry_at or (datetime.now(UTC) - self._native_telemetry_at).total_seconds() > 30) and (positions["Position"] or cars["Entries"]):
+                            if self.track_source != "openf1":
+                                self.track_positions.clear()
+                                self.track_car_data.clear()
+                                self.track_trace.clear()
+                                self._trace_driver = None
+                            self.track_source = "openf1"
+                            self._capture_track("Position.z", positions)
+                            self._capture_track("CarData.z", cars)
+                            self.telemetry_status = "receiving" if positions["Position"] else "waiting"
+            except httpx.HTTPStatusError as error:
+                self.telemetry_status = "access-limited" if error.response.status_code in {401, 403} else "rate-limited" if error.response.status_code == 429 else "unavailable"
+                delay = 60
+            except (httpx.HTTPError, ValueError, KeyError, TypeError):
+                self.telemetry_status = "unavailable"
+                delay = 30
+            await asyncio.sleep(delay)
 
     async def _run(self) -> None:
         attempt = 0
@@ -423,7 +481,7 @@ class LiveTimingService:
                 for topic in PUBLIC_TOPICS:
                     if topic in result:
                         if topic in ("Position.z", "CarData.z"):
-                            self._capture_track(topic, result[topic])
+                            self._capture_native_track(topic, result[topic])
                             continue
                         self.topics[topic] = _deep_merge(self.topics.get(topic, {}), result[topic])
                         if topic == "SessionInfo":
@@ -442,7 +500,7 @@ class LiveTimingService:
         if topic not in PUBLIC_TOPICS:
             return
         if topic in ("Position.z", "CarData.z"):
-            self._capture_track(topic, payload)
+            self._capture_native_track(topic, payload)
             self.updated_at = datetime.now(UTC).isoformat()
             self.connection = "live"
             return
@@ -592,7 +650,9 @@ class LiveTimingService:
             "drivers": rows,
             "raceControl": list(self.race_control_history.values())[-50:][::-1],
             "teamRadio": radio_items,
+            "telemetryStatus": self.telemetry_status,
             "track": {
+                "source": self.track_source,
                 "sampledAt": self.track_updated_at,
                 "positions": list(self.track_positions.values()),
                 "cars": self.track_car_data,

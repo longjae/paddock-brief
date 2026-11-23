@@ -49,11 +49,13 @@ async def run_worker(
     heartbeat_seconds: float = 15,
     once: bool = False,
     collect_fn=collect,
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     state: dict[str, Any] = {"status": "starting", "startedAt": datetime.now(UTC).isoformat(), "snapshotsSaved": 0, "consecutiveFailures": 0, "lastError": None}
 
     async def heartbeat() -> None:
         while True:
+            state.update(metadata or {})
             write_health(health_path, state)
             await asyncio.sleep(heartbeat_seconds)
 
@@ -76,6 +78,7 @@ async def run_worker(
                 if stopping in done:
                     break
                 count = await task
+                state.update(metadata or {})
                 state.update(status="idle", lastCycleStatus="ok", consecutiveFailures=0, lastError=None)
                 state["snapshotsSaved"] += count
                 if count:

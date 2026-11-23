@@ -58,3 +58,17 @@ launchctl print gui/$(id -u)/com.paddockbrief.live-worker
 4. 네트워크를 잠깐 끊었다 복구한 뒤 재접속·저장 재개와 화면 지연 표시를 대조한다.
 5. 위치·차량 주제의 실제 제공 여부를 별도로 판단한다. 공개 타이밍 수신 또는 경기 후 리플레이 성공을 실시간 위치 수신 성공으로 간주하지 않는다.
 6. FP2 07:15 KST에 FP1 실패 항목을 재검증한다.
+
+## GitHub dispatch supervisor (2026-11-23)
+
+When the local database writer credential is unavailable, install with
+`backend/.venv/bin/python backend/scripts/install_macos_live_worker.py --github-dispatch`.
+The per-user agent uses the already authenticated GitHub CLI; it never copies GitHub secrets.
+It checks the featured GP calendar, dispatches the existing 14400-second collector during a
+session window, and monitors queued/running runs. A file lock and persisted five-minute
+cooldown prevent duplicate local dispatches. Dispatch is not evidence of saved snapshots.
+The Mac must remain awake, logged in, and connected. GitHub startup latency still applies.
+`health.json` records controller status, not a claim of live telemetry availability.
+Optional authenticated OpenF1 telemetry requires OPENF1_TOKEN on the actual collector;
+token expiry/refresh and live-session verification remain prerequisites. No paid account
+or subscription is provisioned by this change.

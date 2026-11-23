@@ -1,10 +1,12 @@
 from functools import lru_cache
 
+from pydantic import ValidationError
+
 from fastapi import HTTPException
 from supabase import Client, create_client
 
 from app.core.config import Settings, get_settings
-from app.schemas import EventDetail
+from app.schemas import EventDetail, DriverState
 from app.services.media_window import media_window
 from app.services.sample_data import DEMO_EVENT
 from app.services.time_format import format_kst_date_range, format_kst_datetime
@@ -107,6 +109,64 @@ class EventRepository:
 
     @staticmethod
     def _normalize(row: dict) -> EventDetail:
+        """Keep unrelated editorial content available when one optional record is bad."""
+        sections = {"sessions": "sessions", "videos": "videos", "interviews": "summary", "team_content": "teamContent", "event_news": "news", "event_drivers": "eventDrivers"}
+        base = {**row, **{name: [] for name in sections}}
+        warnings = []
+        try:
+            event = EventRepository._normalize_unchecked(base)
+        except (ValidationError, TypeError, KeyError, ValueError):
+            # Allocation is optional; core GP identity must still validate.
+            base["tyre_allocations"] = {}
+            event = EventRepository._normalize_unchecked(base)
+            warnings.append("타이어 배정 정보를 확인하지 못했습니다.")
+        labels = {"sessions": "세션", "videos": "영상", "interviews": "인터뷰", "team_content": "팀 콘텐츠", "event_news": "기사", "event_drivers": "선수"}
+        for name, target in sections.items():
+            entries = row.get(name) or []
+            valid, rejected = [], 0
+            if not isinstance(entries, list):
+                entries, rejected = [], 1
+            for item in entries:
+                try:
+                    if not isinstance(item, dict):
+                        raise ValueError("Invalid record")
+                    entry = {**item, "race_state_snapshots": []} if name == "sessions" else item
+                    candidate = EventRepository._normalize_unchecked({**base, name: [entry]})
+                    valid.extend(getattr(candidate, target))
+                except (ValidationError, KeyError, TypeError, ValueError, AttributeError):
+                    rejected += 1
+            if name == "sessions":
+                valid.sort(key=lambda session: session.startsAt)
+            elif name in {"videos", "team_content", "event_news"}:
+                valid.sort(key=lambda item: item.publishedAt or "", reverse=True)
+            setattr(event, target, valid)
+            if rejected:
+                warnings.append(f"{labels[name]} {rejected}건을 확인하지 못했습니다. 다른 자료는 계속 볼 수 있습니다.")
+        snapshots = [snapshot for session in row.get("sessions", []) if isinstance(session, dict)
+                     for snapshot in (session.get("race_state_snapshots") if isinstance(session.get("race_state_snapshots"), list) else []) if isinstance(snapshot, dict)
+                     and isinstance(snapshot.get("state"), dict) and snapshot["state"].get("kind") == "final-classification"] if isinstance(row.get("sessions", []), list) else []
+        latest = max(snapshots, key=lambda item: str(item.get("captured_at") or ""), default={})
+        drivers = latest.get("state", {}).get("drivers") or []
+        rejected = 0
+        if not isinstance(drivers, list):
+            drivers, rejected = [], 1
+        for driver in drivers:
+            try:
+                event.drivers.append(DriverState.model_validate(driver))
+            except ValidationError:
+                rejected += 1
+        colours = {driver.code: driver.colour for driver in event.eventDrivers}
+        for driver in event.drivers:
+            if driver.colour == "#888888" and colours.get(driver.code):
+                driver.colour = colours[driver.code]
+        event.drivers.sort(key=lambda driver: driver.position)
+        if rejected:
+            warnings.append(f"결과 선수 {rejected}명의 일부 정보를 확인하지 못했습니다.")
+        event.dataWarnings = warnings
+        return event
+
+    @staticmethod
+    def _normalize_unchecked(row: dict) -> EventDetail:
         allocation_value = row.get("tyre_allocations") or {}
         allocation = allocation_value[0] if isinstance(allocation_value, list) and allocation_value else allocation_value
         session_rows = sorted(row.get("sessions") or [], key=lambda item: item["starts_at"])
@@ -146,6 +206,7 @@ class EventRepository:
                 "detailedSummary": video.get("korean_detail"),
                 "transcriptStatus": video.get("transcript_status") or "pending",
                 "transcriptLanguage": video.get("transcript_language"),
+                "transcriptRetryAt": video.get("transcript_retry_after"),
                 "publishedAt": str(video["published_at"]) if video.get("published_at") else None,
             }
             for video in video_rows

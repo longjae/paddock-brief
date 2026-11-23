@@ -15,6 +15,7 @@ type Collector = {
   pending: number;
   metadataUnverified: number;
   delayed: boolean;
+  sourceStatus?: Array<{code: string; team: string; status: "available" | "empty" | "blocked" | "failed"; discovered: number; checkedAt: string | null}>;
 };
 type Health = { collectors: Collector[]; unavailable: boolean; teamCoverage: { configured: string[]; total: number | null } };
 const API = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
@@ -60,7 +61,8 @@ export function CollectionHealth() {
         {item.unavailable > 0 && <p>{item.kind === "radio" ? "사용 가능한 음성 없음" : "공개 자막 제공 제한"} {item.unavailable}건</p>}
         {item.translationMissing > 0 && <p className="health-warning">한국어 번역 대기 {item.translationMissing}건 · 영어 자막 유지</p>}
       </article>)}</div>
-      <p>팀 공식 홈페이지 직접 수집: {health?.teamCoverage.configured.length ?? "—"} / {health?.teamCoverage.total ?? "—"}팀. {health?.teamCoverage.configured.join(" · ")}. 나머지 팀의 일반 보도와 공식 홈페이지 직접 수집은 구분됩니다. 전체 팀 확대는 준비 중입니다.</p>
+      <p>팀 공식 소스 등록: {health?.teamCoverage.configured.length ?? "—"} / {health?.teamCoverage.total ?? "—"}팀. 등록 수는 수집 성공 수가 아닙니다. 접근 제한이나 기사 링크 미발견은 아래에 따로 표시합니다.</p>
+      <details><summary>팀별 마지막 소스 점검</summary>{(health?.collectors.find(item => item.kind === "news" && item.sourceStatus?.length)?.sourceStatus ?? health?.collectors.find(item => item.sourceStatus?.length)?.sourceStatus ?? []).map(source => <p key={source.code}><b>{source.team}</b> · {{available: `기사 링크 ${source.discovered}개 발견`, empty: "기사 링크 미발견", blocked: "접근 제한", failed: "접속 확인 필요"}[source.status]} · {time(source.checkedAt)}</p>)}{!health?.collectors.some(item => item.sourceStatus?.length) && <p>팀별 점검 기록이 아직 없습니다.</p>}</details>
     </div>
   </details>;
 }

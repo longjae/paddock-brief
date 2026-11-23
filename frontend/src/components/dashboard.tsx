@@ -762,6 +762,7 @@ export function Dashboard({
       </section>}
 
       {["news", "interviews", "live"].includes(activeSection) && <CollectionHealth />}
+      {!!event.dataWarnings?.length && <aside className="empty-state" role="status"><b>일부 자료 확인 필요</b>{event.dataWarnings.map((warning) => <p key={warning}>{warning}</p>)}</aside>}
       {activeSection === "news" && <section className="section-page latest-news-page" id="news">
         <div className="page-heading"><div><p className="eyebrow">LATEST F1 NEWS</p><h1>F1 최신 뉴스</h1><p>그랑프리 일정과 관계없이 확인한 기사를 모았습니다. 발행 시각은 원문 기준입니다.</p></div><span>{latestNews.length} ARTICLES</span></div>
         {newsLoading ? <p className="empty-state">최신 기사를 불러오는 중입니다…</p> : newsError ? <p className="empty-state">기사를 불러오지 못했습니다. 잠시 후 다시 확인해 주세요.</p> : latestNews.length === 0 ? <p className="empty-state">최근 수집한 기사가 없습니다. 다음 수집 후 이곳에 표시됩니다.</p> : <>
@@ -905,6 +906,7 @@ export function Dashboard({
               <span>{selectedVideo?.category}</span>
               <h3>{selectedVideo?.title}</h3>
               <p>{selectedVideo?.participants.join(" · ")}</p>
+              {selectedVideo?.transcriptRetryAt && <p className="empty-state" role="status">공개 자막 접근이 제한됐습니다. {new Date(selectedVideo.transcriptRetryAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })} KST 이후 다시 확인합니다. 원본 영상 링크는 계속 이용할 수 있습니다.</p>}
               {selectedVideo && <button className="video-summary-button" onClick={() => setSelectedContent(videoModalContent(selectedVideo, "var(--f1-red)", selectedVideo.participants[0] ?? "F1 영상"))} type="button">{selectedVideo.detailedSummary ? "영상 한국어 요약 보기 ↗" : selectedVideo.transcriptStatus === "unavailable" ? "자막 없음 · 영상 정보 보기" : selectedVideo.transcriptStatus === "failed" ? "요약 재시도 예정 · 상태 보기" : "영상 요약 준비 중 · 상태 보기"}</button>}
             </div>
           </div>

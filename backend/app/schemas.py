@@ -24,6 +24,7 @@ class Video(BaseModel):
     detailedSummary: str | None = None
     transcriptStatus: Literal["pending", "ready", "unavailable", "failed"] = "pending"
     transcriptLanguage: str | None = None
+    transcriptRetryAt: str | None = None
     publishedAt: str | None = None
 
 
@@ -122,6 +123,7 @@ class ChampionshipSnapshot(BaseModel):
 
 
 class EventDetail(BaseModel):
+    dataWarnings: list[str] = Field(default_factory=list)
     slug: str
     season: int
     round: int

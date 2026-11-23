@@ -18,6 +18,7 @@ export type Video = {
   detailedSummary?: string | null;
   transcriptStatus?: "pending" | "ready" | "unavailable" | "failed";
   transcriptLanguage?: string | null;
+  transcriptRetryAt?: string | null;
   publishedAt?: string | null;
 };
 
@@ -81,6 +82,7 @@ export type EventDriver = {
 };
 
 export type EventDetail = {
+  dataWarnings?: string[];
   slug: string;
   season: number;
   round: number;
@@ -151,6 +153,7 @@ export type LiveTimingSnapshot = {
   archiveStatus?: "upcoming" | "pending" | "published";
   source?: string;
   captureSource?: "live" | "saved";
+  telemetryStatus?: "not-configured" | "waiting" | "receiving" | "access-limited" | "rate-limited" | "unavailable";
   event: string;
   connection: "disabled" | "offline" | "connecting" | "reconnecting" | "live";
   isLive: boolean;
@@ -166,6 +169,7 @@ export type LiveTimingSnapshot = {
   raceControl: Array<Record<string, string | number | boolean | null>>;
   teamRadio: Array<Record<string, string | number | boolean | null>>;
   track?: {
+    source?: string;
     sampledAt: string | null;
     positions: Array<{ number: string; x: number; y: number; sampledAt: string }>;
     cars: Record<string, { speed: number; rpm: number; gear: number; throttle: number; brake: number; sampledAt: string }>;

@@ -166,3 +166,13 @@
 - 실제 저장 국가는 United States, Jolpica는 USA여서 첫 재검증에서 추가 표기 차이가 발견됐다. `cfe50ed`로 국가 별칭을 정규화했고 같은 회귀 테스트에 실제 표기를 추가했다. 후속 `45125561214`는 success, Las Vegas 22명 synced를 확인했다. 첫 재실행 `45125369013`의 실패 기록은 그대로 보존한다.
 - 콘텐츠 재실행 `45125365418` success(2분 45초). 일반 뉴스 6건·GP 자료 2건 저장, 자막 3건은 TranscriptAccessLimited/limited=3으로 기록했다. 운영 health의 videos.partial·failed=3·pending=3과 GitHub warning이 유지된다. 이번 실제 실행은 신규 저장도 있었으며 신규 0건+접근 제한만 있는 종료 판정은 회귀 테스트로 별도 검증했다.
 - 결과 동기화 후 운영 이벤트 API는 200·22명, 상위 VER/NOR/PIA를 반환했다. YouTube 자막 자체를 복구한 것은 아니며 허용된 공급 경로가 필요한 제한은 남아 있다. 개인 쿠키 추출·접근 차단 우회·유료 가입은 하지 않았다.
+
+### Integrated reliability and source expansion — 2026-11-23
+
+- GitHub dispatch supervisor and Mac LaunchAgent mode implemented without copying DB secrets. Session-window, active-run deduplication, restart cooldown, and check-only mode tested. Installation and operating verification are recorded below after release.
+- Optional GP sections validate independently; malformed video/interview/news/driver records no longer break unrelated sections. Public warnings identify rejected counts without raw records.
+- Eleven official team sources registered. Read-only discovery: 10 available, Ferrari HTTP 403. Discovery is not proof that all article bodies or summaries succeed. Date checks exclude archived articles from current GP; round-robin quotas reduce source bias; source-specific state is public.
+- Radio segments ordered and invalid boundaries removed; empty/oversized audio rejected; automatic unreviewed transcript/translation label added. Listening review, long audio and multi-speaker accuracy are not claimed complete.
+- Explicit video caption access limits defer retry for 24 hours, preserve partial state and external links, and expose next retry time. Paid transcript provider is not configured; blocked transcripts are not restored by backoff alone.
+- Authenticated OpenF1 fallback implemented with session/location/local-date and freshness guards, native feed priority, and access/rate-limit separation. No credential provisioned; actual live location/car delivery and token renewal remain unverified.
+- Database additive migration applied; both new columns confirmed. Security advisor returned no findings. Backend 139 tests pass; production frontend build and release checks follow.

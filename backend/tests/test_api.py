@@ -38,7 +38,7 @@ def test_collection_health_exposes_only_sanitized_status() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["teamCoverage"]["total"] == 11
-    assert len(payload["teamCoverage"]["configured"]) == 2
+    assert len(payload["teamCoverage"]["configured"]) == 11
     assert payload["collectors"][1]["metadataUnverified"] == 2
     assert "private-secret" not in response.text
 

@@ -18,6 +18,7 @@ from app.services.content_collector import (
     F1_BASE_URL,
     LATEST_CONTENT_URL,
     MEDIA_FEED_SOURCES,
+    TEAM_EDITORIAL_SOURCES,
     Formula1ContentCollector,
     OpenAISummarizer,
     canonicalize_web_url,
@@ -72,6 +73,19 @@ def main() -> int:
         except Exception as exc:
             errors.append(f"{source.name} discovery: {exc}")
 
+    team_codes = {source.code: source.team_code for source in TEAM_EDITORIAL_SOURCES}
+    sources += [(source.code, source.name, source.base_url, False) for source in TEAM_EDITORIAL_SOURCES]
+    for source in TEAM_EDITORIAL_SOURCES:
+        try:
+            candidates += [(source.code, source.name, source.base_url, False, url) for url in sorted(collector.team_article_urls(source), reverse=True)[:15]]
+        except Exception as exc:
+            errors.append(f"{source.name} discovery: {type(exc).__name__}")
+    # Rotate the first source hourly so a small batch cannot permanently starve a team.
+    codes = list(dict.fromkeys(item[0] for item in sources))
+    offset = int(datetime.now(timezone.utc).timestamp() // 3600) % len(codes)
+    codes = codes[offset:] + codes[:offset]
+    groups = {code: [item for item in candidates if item[0] == code] for code in codes}
+    candidates = [group[index] for index in range(max((len(group) for group in groups.values()), default=0)) for group in groups.values() if index < len(group)]
     existing = {
         canonicalize_web_url(row["source_url"], row["source_url"])
         for row in database.table("general_news").select("source_url").order("published_at", desc=True).limit(500).execute().data
@@ -82,7 +96,7 @@ def main() -> int:
     inserted = 0
     fresh = 0
     inserted_by_source: dict[str, int] = {}
-    source_limit = max(2, (args.max_articles + len(sources) - 1) // len(sources))
+    source_limit = max(1, (args.max_articles + len(sources) - 1) // len(sources))
     for code, name, base_url, official, url in candidates:
         if inserted >= args.max_articles:
             break
@@ -101,11 +115,13 @@ def main() -> int:
                 inserted_by_source[code] = inserted_by_source.get(code, 0) + 1
                 continue
             summary = collector.summarizer.summarize(document, teams, drivers)
+            if code in team_codes and team_codes[code] not in summary.team_codes:
+                summary.team_codes.insert(0, team_codes[code])
             if args.dry_run:
                 inserted += 1
                 inserted_by_source[code] = inserted_by_source.get(code, 0) + 1
                 continue
-            source_id = collector.ensure_source(code, name, base_url, "official-editorial" if official else "media", is_official=official)
+            source_id = collector.ensure_source(code, name, base_url, "official-team" if code in team_codes else "official-editorial" if official else "media", is_official=official or code in team_codes)
             database.table("general_news").upsert({
                 "source_id": source_id,
                 "source_url": document.url,
@@ -126,7 +142,7 @@ def main() -> int:
         except Exception as exc:
             errors.append(f"{url}: {type(exc).__name__}: {exc}")
     if not args.dry_run and not args.discovery_only:
-        record_collection_health(database, "news", "failed" if not candidates else "partial" if errors else "succeeded", processed=inserted, failed=len(errors))
+        record_collection_health(database, "news", "failed" if not candidates else "partial" if errors else "succeeded", processed=inserted, failed=len(errors), source_status=collector.team_source_status)
     print(json.dumps({"ok": bool(candidates), "discovered": len(candidates), "fresh": fresh, "inserted": inserted, "errors": errors}, ensure_ascii=False))
     return 0 if candidates else 1
 

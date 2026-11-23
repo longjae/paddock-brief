@@ -8,6 +8,7 @@ from typing import Any
 import httpx
 
 from app.schemas import EventDetail
+from app.core.config import get_settings
 from app.services.media_window import media_window
 from app.services.sample_data import DEMO_EVENT
 from app.services.time_format import format_kst_date_range, format_kst_datetime
@@ -56,7 +57,8 @@ def _featured_meeting(rows: list[dict[str, Any]], now: datetime) -> dict[str, An
 class OpenF1Service:
     """Small public-data adapter with a short in-process cache and safe fallback."""
 
-    def __init__(self) -> None:
+    def __init__(self, token: str | None = None) -> None:
+        self._token = token
         self._meetings: dict[int, list[dict[str, Any]]] = {}
         self._sessions: dict[int, list[dict[str, Any]]] = {}
         self._session_data_cache: dict[int, tuple[float, dict[str, Any]]] = {}
@@ -68,7 +70,7 @@ class OpenF1Service:
         async with httpx.AsyncClient(timeout=12.0) as client:
             for attempt in range(3):
                 try:
-                    response = await client.get(f"{OPENF1_BASE_URL}/{resource}", params=params)
+                    response = await client.get(f"{OPENF1_BASE_URL}/{resource}", params=params, headers={"Authorization": f"Bearer {self._token}"} if self._token else {})
                     response.raise_for_status()
                     payload = response.json()
                     break
@@ -333,4 +335,4 @@ class OpenF1Service:
 
 @lru_cache
 def get_openf1_service() -> OpenF1Service:
-    return OpenF1Service()
+    return OpenF1Service(get_settings().openf1_token)
