@@ -17,6 +17,13 @@ from app.services.calendar_registry import register_missing_active_events
 from app.services.collection_health import record_collection_health
 
 
+def collection_fully_failed(results: list[CollectionResult]) -> bool:
+    return bool(results) and all(
+        result.failed > result.limited and result.inserted == 0 and result.updated == 0
+        for result in results
+    )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Collect and summarize official Formula 1 weekend content.")
     parser.add_argument("--event-slug", help="Collect one event even when it is outside the active window.")
@@ -94,7 +101,7 @@ def main() -> int:
             summary_failed = any(row.get("transcript_status") == "failed" for row in videos)
             video_status = "failed" if video_errors and not videos else "partial" if video_errors or metadata_unverified or unavailable or summary_failed else "succeeded"
             record_collection_health(database, "videos", video_status, processed=result.inserted if args.videos_only else None, failed=video_errors, pending=sum(row.get("transcript_status") in {"pending", "failed"} for row in videos), unavailable=unavailable, metadata_unverified=metadata_unverified, event_slug=event["slug"])
-            status = "succeeded" if result.failed == 0 else ("partial" if result.inserted else "failed")
+            status = "succeeded" if result.failed == 0 else ("partial" if result.inserted or result.updated or result.limited else "failed")
             database.table("content_collection_runs").insert(
                 {
                     "event_id": event["id"],
@@ -111,10 +118,10 @@ def main() -> int:
                     "dry_run": args.dry_run,
                 }
             ).execute()
-    total_failure = bool(results) and all(
-        result.failed > 0 and result.inserted == 0 and result.updated == 0
-        for result in results
-    )
+    total_failure = collection_fully_failed(results)
+    limited = sum(result.limited for result in results)
+    if limited:
+        print(f"::warning::Public YouTube caption access limited for {limited} videos; partial status and pending captions are retained.")
     payload = {"ok": not total_failure, "results": [asdict(result) for result in results]}
     print(json.dumps(payload, ensure_ascii=False, default=str))
     return 1 if total_failure else 0

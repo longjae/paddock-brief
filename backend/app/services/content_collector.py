@@ -162,6 +162,10 @@ class YouTubeVideo:
     source: YouTubeSource
 
 
+class TranscriptAccessLimited(RuntimeError):
+    """Public caption providers explicitly blocked access; no bypass is attempted."""
+
+
 @dataclass(slots=True)
 class CollectionResult:
     event_slug: str
@@ -171,6 +175,7 @@ class CollectionResult:
     updated: int = 0
     skipped: int = 0
     failed: int = 0
+    limited: int = 0
     errors: list[str] = field(default_factory=list)
 
 
@@ -898,6 +903,7 @@ class Formula1ContentCollector:
 
     def fetch_youtube_transcript_with_fallback(self, video_id: str) -> tuple[str, str]:
         errors: list[str] = []
+        access_limited = True
         providers = [self.fetch_youtube_transcript, self.fetch_youtube_transcript_with_ytdlp]
         if self.transcript_api_key:
             providers.append(self.fetch_youtube_transcript_from_api)
@@ -906,9 +912,15 @@ class Formula1ContentCollector:
                 return provider(video_id)
             except Exception as exc:
                 errors.append(f"{provider.__name__}: {type(exc).__name__}")
+                access_limited = access_limited and (
+                    type(exc).__name__ in {"RequestBlocked", "IpBlocked"}
+                    or (type(exc).__name__ == "DownloadError" and "confirm you’re not a bot" in str(exc))
+                    or (type(exc).__name__ == "DownloadError" and "confirm you're not a bot" in str(exc))
+                )
         if not self.transcript_api_key:
             errors.append("fetch_youtube_transcript_from_api: NotConfigured")
-        raise RuntimeError("; ".join(errors))
+        error_type = TranscriptAccessLimited if access_limited else RuntimeError
+        raise error_type("; ".join(errors))
 
     def summarize_youtube_videos(
         self,
@@ -1355,6 +1367,7 @@ class Formula1ContentCollector:
         )
         result.updated += video_summarized
         result.failed += video_failed
+        result.limited += sum(": TranscriptAccessLimited:" in error for error in video_errors)
         result.errors.extend(video_errors)
         return result
 

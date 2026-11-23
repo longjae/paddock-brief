@@ -510,3 +510,26 @@ def test_brazil_collector_requests_official_hub(monkeypatch):
     assert "https://www.formula1.com/en/racing/2026/brazil" in requested
     assert not any(url.endswith('/brazilian') for url in requested)
     assert result.event_slug == "2026-brazilian" and result.failed == 0
+
+
+def test_explicit_caption_block_is_distinct_from_network_failure(monkeypatch):
+    import pytest
+    from app.services.content_collector import TranscriptAccessLimited
+    from scripts.collect_weekend_content import collection_fully_failed, CollectionResult
+    collector = Formula1ContentCollector(None, None, "test")
+    RequestBlocked = type("RequestBlocked", (Exception,), {})
+    DownloadError = type("DownloadError", (Exception,), {})
+    def blocked(_): raise RequestBlocked("blocked")
+    def bot(_): raise DownloadError("Sign in to confirm you're not a bot")
+    monkeypatch.setattr(collector, "fetch_youtube_transcript", blocked)
+    monkeypatch.setattr(collector, "fetch_youtube_transcript_with_ytdlp", bot)
+    with pytest.raises(TranscriptAccessLimited):
+        collector.fetch_youtube_transcript_with_fallback("abcdefghijk")
+    def timeout(_): raise httpx.ReadTimeout("network unavailable")
+    monkeypatch.setattr(collector, "fetch_youtube_transcript_with_ytdlp", timeout)
+    with pytest.raises(RuntimeError) as caught:
+        collector.fetch_youtube_transcript_with_fallback("abcdefghijk")
+    assert not isinstance(caught.value, TranscriptAccessLimited)
+    assert not collection_fully_failed([CollectionResult("test", failed=3, limited=3)])
+    assert collection_fully_failed([CollectionResult("test", failed=4, limited=3)])
+    assert collection_fully_failed([CollectionResult("test", failed=1)])

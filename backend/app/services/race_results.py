@@ -7,13 +7,22 @@ import httpx
 from app.services.fastf1_sync import VALID_COMPOUNDS, normalized_name, safe_number
 
 
-def fetch_public_results(season: int, round_number: int, country: str) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+def fetch_public_results(season: int, round_number: int, country: str, *, locality: str | None = None, circuit_name: str | None = None) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
     """Get the published classification and optional last tyre stint."""
     with httpx.Client(timeout=20) as client:
         response = client.get(f"https://api.jolpi.ca/ergast/f1/{season}/{round_number}/results.json", params={"limit": 100})
         response.raise_for_status()
         races = response.json()["MRData"]["RaceTable"]["Races"]
-        if len(races) != 1 or normalized_name(country) not in normalized_name(races[0]["raceName"]):
+        race = races[0] if len(races) == 1 else {}
+        circuit = race.get("Circuit") or {}
+        location = circuit.get("Location") or {}
+        country_matches = bool(country) and normalized_name(country) == normalized_name(location.get("country") or "")
+        place_matches = not (locality or circuit_name) or any(
+            normalized_name(expected) == normalized_name(actual)
+            for expected, actual in [(locality, location.get("locality")), (circuit_name, circuit.get("circuitName"))]
+            if expected and actual
+        )
+        if str(race.get("season")) != str(season) or str(race.get("round")) != str(round_number) or not country_matches or not place_matches:
             raise ValueError("Jolpica result does not match the selected event")
         race = races[0]
         results = race.get("Results") or []
