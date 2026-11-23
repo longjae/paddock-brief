@@ -176,3 +176,13 @@
 - Explicit video caption access limits defer retry for 24 hours, preserve partial state and external links, and expose next retry time. Paid transcript provider is not configured; blocked transcripts are not restored by backoff alone.
 - Authenticated OpenF1 fallback implemented with session/location/local-date and freshness guards, native feed priority, and access/rate-limit separation. No credential provisioned; actual live location/car delivery and token renewal remain unverified.
 - Database additive migration applied; both new columns confirmed. Security advisor returned no findings. Backend 139 tests pass; production frontend build and release checks follow.
+
+#### Release and operating checks
+
+- `b41b896`: API and frontend production deployments READY; operating Las Vegas event API 200 (5 sessions, 3 videos, no data warnings), collection-health 200 with 11 registered teams. Frontend production build passed.
+- GitHub dispatch LaunchAgent installed in original project; launchctl reports running and health heartbeat advances with `lastCycleStatus=ok`, `workflowStatus=outside-session`. This confirms controller operation, not live snapshot storage.
+- Additional source ordering uses sitemap lastmod before random article identifiers. Empty/oversized radio never calls transcription; OpenF1 token travels only in Authorization header. Total backend tests: 143 passed.
+- Content integration run: https://github.com/longjae/paddock-brief/actions/runs/45129662331 (final result recorded after completion).
+- PC/mobile browser verification blocked by browser connection errors (in-app webview timeout and Chrome control error). Operating HTTP/API checks do not substitute for visual verification.
+- One-time Qatar FP1 follow-up `fp1` created for 2026-11-27 22:45 KST (13:45 UTC); official FP1 13:30–14:30 UTC and operating calendar 22:30 KST agree. Follow-up checks automatic dispatch, >=5 minutes of actual storage, telemetry supply/access, recovery, and PC/390px UI; removes itself when complete.
+- Still unverified: real authenticated OpenF1 live receipt/token renewal; blocked YouTube caption restoration without an authorized provider; radio listening/translation/speaker accuracy; all 11 teams' successful article bodies and summaries (Ferrari blocked).

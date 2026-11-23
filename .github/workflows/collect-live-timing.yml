@@ -28,6 +28,7 @@ jobs:
       run:
         working-directory: backend
     env:
+      OPENF1_TOKEN: ${{ secrets.OPENF1_TOKEN }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
       APP_USE_SAMPLE_DATA: "false"
