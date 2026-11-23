@@ -186,3 +186,9 @@
 - PC/mobile browser verification blocked by browser connection errors (in-app webview timeout and Chrome control error). Operating HTTP/API checks do not substitute for visual verification.
 - One-time Qatar FP1 follow-up `fp1` created for 2026-11-27 22:45 KST (13:45 UTC); official FP1 13:30–14:30 UTC and operating calendar 22:30 KST agree. Follow-up checks automatic dispatch, >=5 minutes of actual storage, telemetry supply/access, recovery, and PC/390px UI; removes itself when complete.
 - Still unverified: real authenticated OpenF1 live receipt/token renewal; blocked YouTube caption restoration without an authorized provider; radio listening/translation/speaker accuracy; all 11 teams' successful article bodies and summaries (Ferrari blocked).
+
+#### Actual integration run result
+
+- Run `45129662331` completed SUCCESS. General news inserted 5 stories from 174 discovered candidates. Event content inserted 3, skipped 125; 5 item errors retained: Ferrari/Cadillac discovery 403 and 3 YouTube caption access limitations. Workflow success does not mean every source/caption succeeded.
+- GitHub discovery: 9/11 teams available; Ferrari and Cadillac blocked (local probe had Cadillac available). Operating sourceStatus preserves this environment difference. No access bypass attempted.
+- API latest deployment `dpl_DkCdLbCGDyR1Sfzg2NnGmd6uhFvP` READY, frontend `dpl_9MLfwJi1tZaS1EYhWYDnp32a2A2M` READY. Source ordering follow-up and optional workflow credential wiring pushed in `5053b45` and `e761d4b`.
