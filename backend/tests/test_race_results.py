@@ -31,6 +31,8 @@ def test_public_results_validate_country_round_and_circuit_not_race_title(monkey
     monkeypatch.setattr(race_results.httpx, "Client", lambda **kw: real_client(transport=httpx.MockTransport(handler)))
     result, _, _ = race_results.fetch_public_results(2026, 21, "USA", locality="Las Vegas")
     assert result["raceName"] == "Las Vegas Grand Prix"
+    result, _, _ = race_results.fetch_public_results(2026, 21, "United States", locality="Las Vegas", circuit_name="Las Vegas Strip Street Circuit")
+    assert result["Circuit"]["Location"]["country"] == "USA"
     for field, value in [("round", "20"), ("season", "2025")]:
         payload = {**copy.deepcopy(race), field: value}
         with pytest.raises(ValueError, match="does not match"):

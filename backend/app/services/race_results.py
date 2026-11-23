@@ -7,6 +7,11 @@ import httpx
 from app.services.fastf1_sync import VALID_COMPOUNDS, normalized_name, safe_number
 
 
+def _country_key(value: str) -> str:
+    key = normalized_name(value)
+    return {"unitedstates": "usa", "unitedstatesofamerica": "usa", "unitedkingdom": "uk", "greatbritain": "uk", "unitedarabemirates": "uae"}.get(key, key)
+
+
 def fetch_public_results(season: int, round_number: int, country: str, *, locality: str | None = None, circuit_name: str | None = None) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
     """Get the published classification and optional last tyre stint."""
     with httpx.Client(timeout=20) as client:
@@ -16,7 +21,7 @@ def fetch_public_results(season: int, round_number: int, country: str, *, locali
         race = races[0] if len(races) == 1 else {}
         circuit = race.get("Circuit") or {}
         location = circuit.get("Location") or {}
-        country_matches = bool(country) and normalized_name(country) == normalized_name(location.get("country") or "")
+        country_matches = bool(country) and _country_key(country) == _country_key(location.get("country") or "")
         place_matches = not (locality or circuit_name) or any(
             normalized_name(expected) == normalized_name(actual)
             for expected, actual in [(locality, location.get("locality")), (circuit_name, circuit.get("circuitName"))]
