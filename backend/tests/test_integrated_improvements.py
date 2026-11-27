@@ -172,3 +172,14 @@ def test_featured_page_does_not_wait_for_external_calendar_when_reviewed_gp_exis
     result = asyncio.run(routes.get_featured_event(repository, jolpica, Mock()))
     assert result.slug == event.slug
     jolpica.list_events.assert_not_awaited()
+
+
+def test_live_countdown_uses_clock_anchor_and_honours_pauses():
+    from app.services.live_timing import remaining_clock
+    clock = {'Utc': '2026-11-27T13:49:00Z', 'Remaining': '00:41:00', 'Extrapolating': True}
+    now = datetime(2026, 11, 27, 13, 50, tzinfo=UTC)
+    assert remaining_clock(clock, now) == '00:40:00'
+    assert remaining_clock({**clock, 'Extrapolating': False}, now) == '00:41:00'
+    assert remaining_clock({**clock, 'Remaining': '00:00:30'}, now) == '00:00:00'
+    assert remaining_clock({**clock, 'Utc': None}, now) == '00:41:00'
+    assert remaining_clock({**clock, 'Utc': 'bad'}, now) == '00:41:00'

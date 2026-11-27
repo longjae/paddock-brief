@@ -47,6 +47,21 @@ TEAM_RADIO_PATH_RE = re.compile(r"^TeamRadio/[A-Za-z0-9_-]+\.mp3$")
 SESSION_PATH_RE = re.compile(r"^[A-Za-z0-9_/-]+/$")
 
 
+
+def remaining_clock(clock: dict[str, Any], now: datetime | None = None) -> str:
+    remaining = clock.get("Remaining") or "—"
+    if clock.get("Extrapolating") is not True or not clock.get("Utc"):
+        return remaining
+    try:
+        hours, minutes, seconds = [float(part) for part in remaining.split(":")]
+        stamp = datetime.fromisoformat(str(clock["Utc"]).replace("Z", "+00:00"))
+        elapsed = max(0, ((now or datetime.now(UTC)) - stamp).total_seconds())
+        total = max(0, int(hours * 3600 + minutes * 60 + seconds - elapsed))
+        return f"{total // 3600:02d}:{total % 3600 // 60:02d}:{total % 60:02d}"
+    except (TypeError, ValueError, AttributeError, OverflowError):
+        return remaining
+
+
 def radio_speaker_segments(payload: dict[str, Any]) -> list[dict[str, Any]]:
     segments = []
     for item in payload.get("segments", []):
@@ -635,7 +650,7 @@ class LiveTimingService:
                 "name": session_info.get("Name") or "세션 대기 중",
                 "path": session_info.get("Path") or "",
                 "meeting": meeting_name or None,
-                "remaining": clock.get("Remaining") or "—",
+                "remaining": remaining_clock(clock),
                 "lap": int(lap_count.get("CurrentLap") or 0),
                 "totalLaps": int(lap_count.get("TotalLaps") or 0),
             },
