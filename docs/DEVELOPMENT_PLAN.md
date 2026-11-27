@@ -200,3 +200,11 @@
 - Dashboard initial event request now aborts after 20 seconds and shows existing connection-error/retry UI instead of staying indefinitely in connecting. Navigation/unmount clears the timer; cached content stays available.
 - 144 backend tests and frontend production build pass. Operating browser verification follows deployment.
 - Released `cca4b0b`: API `dpl_BCU1M84dbwXsXvxTvfZAwi4nSyFm`, frontend `dpl_7Bamcnf92MJsQjqnCeo8ijNDVYX7`, both production READY. Featured API returned 200 / 22 drivers in 2.92s and 4.63s after release (baseline 24s). Browser hard reload `/live` left connecting and rendered API connected, GP sessions and timing. Browser error log empty. Screenshot saved locally for user proof. The 20s timeout path is implemented; no forced network fault was injected in operating browser.
+
+### 카타르 FP1 실전 검증 — 2026-11-27
+
+- [결과와 다음 확인 목록](QATAR_FP1_LIVE_20261127.md). Mac 감시기가 수집기 46006313915를 13:20:48 UTC에 자동 시작했다. 305초/6표본 모두 22명, 저장 경과 1–12초; 순위·랩 타임·타이어·섹터·미니섹터 변경 및 페이지를 닫은 동안 저장 지속을 확인했다.
+- PC 1440/모바일 390px 가로 넘침 없음, 모바일 패널 전환·페이지 재진입 복구 확인. 실제 네트워크 장애/물리 기기 검증은 미완료다.
+- 공개 위치·차량 주제 없음, OpenF1 401, 인증 미구성 지속. 라디오 음원 200·FP1 자막 0건. 신규 전사 실행은 자동 승인 검토가 비용/DB 변경 승인 부족으로 거절했다.
+- bcbb2da로 남은 시간 정지 문제 수정, 145개 테스트 통과·API 운영 배포 후 실제 SSE 카운트다운 감소 확인. 기존 장기 수집기의 추가 실행은 중복 위험으로 자동 승인 거절돼 유지했으며 저장 경로의 수정 반영은 다음 신규 실행에서 재검증한다.
+- 일회 FP1 예약 삭제. FP2 신규 예약은 생성하지 않았다. 기사/영상의 제공 제한과 오류는 기록대로 남아 있다.
