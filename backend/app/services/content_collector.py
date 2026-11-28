@@ -175,6 +175,10 @@ class TranscriptAccessLimited(RuntimeError):
     """Public caption providers explicitly blocked access; no bypass is attempted."""
 
 
+class TeamSourceAccessLimited(RuntimeError):
+    """An official team HTTP fetch is restricted; processing failures stay distinct."""
+
+
 @dataclass(slots=True)
 class CollectionResult:
     event_slug: str
@@ -185,6 +189,7 @@ class CollectionResult:
     skipped: int = 0
     failed: int = 0
     limited: int = 0
+    source_limited: int = 0
     errors: list[str] = field(default_factory=list)
 
 
@@ -1044,6 +1049,14 @@ class Formula1ContentCollector:
             self.team_source_status.append({"code": source.code, "team": source.name, "status": "failed", "discovered": 0, "checkedAt": checked})
             raise
 
+    def fetch_team_article(self, url: str) -> str:
+        try:
+            return self.fetch(url)
+        except httpx.HTTPStatusError as error:
+            if error.response.status_code in {401, 403, 429}:
+                raise TeamSourceAccessLimited(f"Official team article HTTP {error.response.status_code}: {url}") from error
+            raise
+
     def collect_event(
         self,
         event: dict[str, Any],
@@ -1080,6 +1093,8 @@ class Formula1ContentCollector:
             except Exception as exc:
                 result.failed += 1
                 result.errors.append(f"discover {source.discovery_url}: {exc}")
+                if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in {401, 403, 429}:
+                    result.source_limited += 1
         groups = [[(url, source) for url, source in team_urls.items() if source.code == team.code] for team in TEAM_EDITORIAL_SOURCES]
         team_urls = dict(item for index in range(max((len(group) for group in groups), default=0)) for group in groups for item in group[index:index + 1])
         fia_urls: set[str] = set()
@@ -1137,7 +1152,7 @@ class Formula1ContentCollector:
                 if team_relevant >= max_articles:
                     break
                 try:
-                    document = parse_team_article(url, self.fetch(url), source)
+                    document = parse_team_article(url, self.fetch_team_article(url), source)
                     if document_matches_event(document, event):
                         result.relevant += 1
                         team_relevant += 1
@@ -1146,6 +1161,8 @@ class Formula1ContentCollector:
                 except Exception as exc:
                     result.failed += 1
                     result.errors.append(f"article {url}: {exc}")
+                    if isinstance(exc, TeamSourceAccessLimited):
+                        result.source_limited += 1
             media_relevant = 0
             for url, source in sorted(media_urls.items()):
                 if media_relevant >= max_articles:
@@ -1321,7 +1338,7 @@ class Formula1ContentCollector:
                 result.skipped += 1
                 continue
             try:
-                document = parse_team_article(url, self.fetch(url), source)
+                document = parse_team_article(url, self.fetch_team_article(url), source)
                 if not team_document_matches_event(document, event) or not team_article_is_current(document, event):
                     result.skipped += 1
                     continue
@@ -1391,6 +1408,8 @@ class Formula1ContentCollector:
             except Exception as exc:
                 result.failed += 1
                 result.errors.append(f"article {url}: {exc}")
+                if isinstance(exc, TeamSourceAccessLimited):
+                    result.source_limited += 1
 
         media_relevant = 0
         for url, source in sorted(media_urls.items()):

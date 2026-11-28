@@ -533,3 +533,40 @@ def test_explicit_caption_block_is_distinct_from_network_failure(monkeypatch):
     assert not collection_fully_failed([CollectionResult("test", failed=3, limited=3)])
     assert collection_fully_failed([CollectionResult("test", failed=4, limited=3)])
     assert collection_fully_failed([CollectionResult("test", failed=1)])
+
+
+def test_team_access_limits_do_not_fail_an_otherwise_completed_empty_batch():
+    from scripts.collect_weekend_content import collection_fully_failed
+    from app.services.content_collector import CollectionResult
+    result = CollectionResult('2026-qatar', discovered=111, skipped=110, failed=3, source_limited=3)
+    assert not collection_fully_failed([result])
+    assert result.failed == 3
+    assert collection_fully_failed([CollectionResult('test', discovered=111, failed=4, source_limited=3)])
+    assert collection_fully_failed([CollectionResult('test', failed=3, source_limited=3)])
+    assert collection_fully_failed([CollectionResult('test', discovered=111, failed=1)])
+
+
+def test_only_team_http_access_errors_are_classified_as_source_limits():
+    import httpx
+    from unittest.mock import Mock
+    from app.services.content_collector import Formula1ContentCollector, TeamSourceAccessLimited
+    collector = Formula1ContentCollector(Mock(), Mock(), 'test')
+    for status in (401, 403, 429, 404, 500):
+        request = httpx.Request('GET', 'https://alpinef1.com/news/qatar-grand-prix-preview')
+        response = httpx.Response(status, request=request)
+        error = httpx.HTTPStatusError('source failed', request=request, response=response)
+        collector.fetch = Mock(side_effect=error)
+        try:
+            collector.fetch_team_article(str(request.url))
+        except Exception as caught:
+            if status in (401, 403, 429):
+                assert isinstance(caught, TeamSourceAccessLimited)
+            else:
+                assert caught is error
+        else:
+            assert False, 'Fetch must preserve failure'
+    collector.fetch = Mock(side_effect=RuntimeError('processing unavailable'))
+    try:
+        collector.fetch_team_article('https://alpinef1.com/news/qatar-grand-prix-preview')
+    except RuntimeError as error:
+        assert not isinstance(error, TeamSourceAccessLimited)

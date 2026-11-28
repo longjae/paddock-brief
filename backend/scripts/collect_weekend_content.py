@@ -19,7 +19,9 @@ from app.services.collection_health import record_collection_health
 
 def collection_fully_failed(results: list[CollectionResult]) -> bool:
     return bool(results) and all(
-        result.failed > result.limited and result.inserted == 0 and result.updated == 0
+        (result.failed > result.limited + result.source_limited
+         or (result.source_limited > 0 and result.discovered == 0))
+        and result.inserted == 0 and result.updated == 0
         for result in results
     )
 
@@ -101,7 +103,7 @@ def main() -> int:
             summary_failed = any(row.get("transcript_status") == "failed" for row in videos)
             video_status = "failed" if video_errors and not videos else "partial" if video_errors or metadata_unverified or unavailable or summary_failed else "succeeded"
             record_collection_health(database, "videos", video_status, processed=result.inserted if args.videos_only else None, failed=video_errors, pending=sum(row.get("transcript_status") in {"pending", "failed"} for row in videos), unavailable=unavailable, metadata_unverified=metadata_unverified, event_slug=event["slug"], source_status=collector.team_source_status)
-            status = "succeeded" if result.failed == 0 else ("partial" if result.inserted or result.updated or result.limited else "failed")
+            status = "succeeded" if result.failed == 0 else ("partial" if result.inserted or result.updated or result.limited or (result.source_limited and result.discovered) else "failed")
             database.table("content_collection_runs").insert(
                 {
                     "event_id": event["id"],
@@ -120,6 +122,9 @@ def main() -> int:
             ).execute()
     total_failure = collection_fully_failed(results)
     limited = sum(result.limited for result in results)
+    source_limited = sum(result.source_limited for result in results)
+    if source_limited:
+        print(f"::warning::Official team sources restricted {source_limited} HTTP requests; errors and partial/failed audit status are retained.")
     if limited:
         print(f"::warning::Public YouTube caption access limited for {limited} videos; partial status and pending captions are retained.")
     payload = {"ok": not total_failure, "results": [asdict(result) for result in results]}

@@ -59,7 +59,7 @@ jobs:
       - name: Install collector dependencies
         run: uv sync --frozen --group collector
       - name: Collect latest news throughout the season
-        if: ${{ !inputs.videos_only }}
+        if: ${{ !inputs.videos_only && !inputs.discovery_only }}
         run: uv run --group collector python scripts/collect_general_news.py
       - name: Collect, classify, summarize, and save
         run: >-
